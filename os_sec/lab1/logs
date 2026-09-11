@@ -1,0 +1,59 @@
+1) cc message_create.c init_queue.c message_queue.h -o create
+2) ./create
+Output:
+0
+Meaning:
+The id of message queue we just created
+3) change message_send.c
+Photo1
+4) cc message_send.c init_queue.c message_queue.h -o send
+5) ./send
+6) sudo adduser new_user (etc.)
+7) ipcs -q
+Output:
+------ Message Queues --------
+key        msqid      owner      perms      used-bytes   messages    
+0x0000000f 0          deb        600        4            1   
+Meaning:
+used-bytes - amount of bytes that are currently in message queue
+8) change message_receive.c
+Photo2
+9) cc message_receive.c init_queue.c message_queue.h -o recieve
+10) ./recieve 
+11) ./recieve
+Output:
+
+Meaning:
+no messages of targeted type left in message queue,
+so waiting till one appears
+12) (new_user) ./send
+(old_user)
+Output:
+Received: type=20; length=4; body=test
+Meaning:
+the desired message finally entered message queue!
+13) change message_receive.c
+Photo3
+14) change message_receive.c
+Photo4
+15) (asked to change message_create.c, but probably init_queue.c)
+change init_queue.c
+Photo5
+16) (probably we were supposed to compile and run message_create couple of times)
+cc message_create.c init_queue.c message_queue.h -o create
+./create
+./create
+./create
+17) cc message_rm.c message_queue.h -o rm_que
+./rm_que 3
+./rm_que 2
+18) gcc message_chqbytes.c message_queue.h -o change_bytes
+./change_bytes 1 5
+19) change message_send.cc
+Photo6
+cc message_send.c init_queue.c message_queue.h -o send
+./send
+Output:
+(terminal freese)
+Meaning:
+we try to fit message of 12 bytes in a que, where mazimum size of a message is 5 bytes
