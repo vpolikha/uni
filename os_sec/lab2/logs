@@ -1,0 +1,156 @@
+1)  (terminal_A) sudo docker-compose up -d
+2)  (terminal_A) sudo docker exec -it demo-mysql mysql -u demo -pdemo demo
+    (terminal_B) sudo docker exec -it demo-mysql mysql -u demo -pdemo demo
+3)  (terminal_A)
+    START TRANSACTION;
+    UPDATE accounts SET balance = 150 WHERE id = 1;
+4)  (terminal_B)
+    START TRANSACTION;
+    UPDATE accounts SET balance = 200 WHERE id = 1;
+    Output:
+
+    Meaning:
+    WRITE LOCK
+5)  (terminal_A)
+    COMMIT;
+6)  (terminal_B)
+    SELECT * FROM accounts;
+    Output:
+    +----+---------+
+    | id | balance |
+    +----+---------+
+    |  1 |     200 |
+    +----+---------+
+    Meaning:
+    No more WRITE LOCK due to COMMIT in terminal_A
+7)  (terminal_A)
+    SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+    START TRANSACTION;
+    UPDATE accounts SET balance = 500 WHERE id = 1;
+8)  (terminal_B)
+    SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+    START TRANSACTION;
+    SELECT * FROM accounts;
+    Output:
+    +----+---------+
+    | id | balance |
+    +----+---------+
+    |  1 |     500 |
+    +----+---------+
+    Meaning:
+    Dirty Read
+9)  (terminal_A)
+    ROLLBACK;
+10) (terminal_B)
+    SELECT * FROM accounts;
+    Output:
+    +----+---------+
+    | id | balance |
+    +----+---------+
+    |  1 |     100 |
+    +----+---------+
+    Meaning:
+    Dirty Read proved
+11) (terminal_A)
+    UPDATE accounts SET balance = 150 WHERE id = 1;
+    COMMIT;
+12) (terminal_B)
+    UPDATE accounts SET balance = 120 WHERE id = 1;
+    COMMIT;
+13) (terminal_A)
+    SELECT * FROM accounts;
+    Output:
+    +----+---------+
+    | id | balance |
+    +----+---------+
+    |  1 |     120 |
+    +----+---------+
+    Meaning:
+    Lost Update from terminal_B
+14) (terminal_A) exit
+    (terminal_B) exit
+15) (terminal_A)
+    cc sem_create.c -o create
+    ./create 2
+    Output:
+    Semaphore ID = 2
+16) (terminal_A)
+    gcc sem_op.c curr_time.c -o op
+    ./op 2 -3
+    Output:
+    20631: about to semop at 09:33:19
+
+    Meaning:
+    Tried to make semaphore < 0 (2-3=-1), so waiting
+17) (terminal_B)
+    gcc sem_get_info.c -o ./info
+    ./info 2
+    Output:
+    Semaphore changed: Fri Sep 11 09:30:39 2026
+    Last semop(): Wed Dec 31 14:00:00 1969
+    Sem # Value SEMPID SEMNCNT SEMZCNT
+    0     2     20332     1     0
+    Meaning:
+    SEMNCNT - amount of processes waiting for
+    semaphore value to get bigger
+18) (terminal_C)
+    ./op 2 1
+    (terminal_A)
+    Output:
+    20631: semop completed at 09:41:55
+    Meaning:
+    Finally managed to -3 the value of semaphore
+19) change sem_create.c:
+    Photo1
+    cc sem_create.c -o create
+    ./create 3
+20) cc sem_setall.c -o set_all
+    ./set_all 3 3 2 1 0
+21) cc sem_good_init.c -o good_init
+    ./good_init & ./good_init
+    Output:
+    [1] 22845
+    Process ID: 22846
+    Successfully created the semaphore set.
+
+    Process ID: 22845
+    Semaphore set already created by another process.
+
+    Process ID: 22845
+    semop() performed by the other process. Operations on semaphore set are safe now.
+
+    Process ID: 22846
+    Performing a 'no-op' semaphore operation to change sem_otime field.
+
+    [1]+  Done                    ./good_init
+    Meaning:
+    good_init creates one semaphore set with key = 15 and initializes semaphore to 0.
+    The second process sees EEXIST, so it knows the set already exists, gets its semid,
+    and checks sem_otime to see whether another process has already called semop().
+    The first process performs semop() with sem_op = 0 and updates sem_otime from 0 to the current time.
+    The second process sees sem_otime != 0, so it knows initialization is finished and safely continues.
+    The output is a little bit shuffled beacuse of printf()
+22) from ipcs -s: key = 15 -> semid 4
+23) gcc sem_op_undo.c -o undo
+    ./undo 4
+    ./info 4
+    Output:
+    Semaphore changed: Fri Sep 11 10:03:13 2026
+    Last semop(): Fri Sep 11 10:21:00 2026
+    Sem # Value SEMPID SEMNCNT SEMZCNT
+    0     0    23611     0     0
+    Meaning:
+    SEM_UNDO reverses the changes after the process is finished
+24) change sem_op_undo.c:
+    Photo2
+25) gcc sem_op_undo.c -o undo
+    ./undo 4
+    ./info 4
+    Output:
+    Semaphore changed: Fri Sep 11 10:03:13 2026
+    Last semop(): Fri Sep 11 10:24:05 2026
+    Sem # Value SEMPID SEMNCNT SEMZCNT
+    0     2    23866     0     0
+    Meaning:
+    no SEM_UNDO, so changes remain after process is finished
+

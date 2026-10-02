@@ -1,0 +1,106 @@
+1)gcc shm_create.c -o create
+gcc shm_attach.c -o attach
+gcc shm_rm.c -o rm_shm
+gcc shm_writer.c binary_sems.c -o writer
+gcc shm_reader.c binary_sems.c -o reader
+2) ./create 102400
+Output:
+0
+Meaning:
+Segment id 204800
+./create
+Output:
+1
+Meaning:
+Segment id
+3) ./attach 0 1
+Output:
+SHMLBA = 4096 (0x1000), PID = 5568
+1: 0 ==> 0x7f213e66e000
+2: 1 ==> 0x7f213e63c000
+Sleeping 5 seconds
+Meaning:
+0x7f213e66e000 - virtual address of id 0 segment
+0x7f213e63c000 - virtual address of id 1 segment
+4) (another terminal)
+sudo cat /proc/5568/maps
+Output:
+55786cf99000-55786cf9a000 r--p 00000000 08:08 2491893                    /home/deb/uni/os_sec/lab3/attach
+55786cf9a000-55786cf9b000 r-xp 00001000 08:08 2491893                    /home/deb/uni/os_sec/lab3/attach
+55786cf9b000-55786cf9c000 r--p 00002000 08:08 2491893                    /home/deb/uni/os_sec/lab3/attach
+55786cf9c000-55786cf9d000 r--p 00002000 08:08 2491893                    /home/deb/uni/os_sec/lab3/attach
+55786cf9d000-55786cf9e000 rw-p 00003000 08:08 2491893                    /home/deb/uni/os_sec/lab3/attach
+557889d14000-557889d35000 rw-p 00000000 00:00 0                          [heap]
+7f213e63c000-7f213e66e000 rw-s 00000000 00:01 1                          /SYSV00000000 (deleted)
+7f213e66e000-7f213e687000 rw-s 00000000 00:01 0                          /SYSV00000000 (deleted)
+7f213e687000-7f213e68a000 rw-p 00000000 00:00 0 
+7f213e68a000-7f213e6b2000 r--p 00000000 08:01 526144                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f213e6b2000-7f213e815000 r-xp 00028000 08:01 526144                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f213e815000-7f213e86b000 r--p 0018b000 08:01 526144                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f213e86b000-7f213e86f000 r--p 001e0000 08:01 526144                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f213e86f000-7f213e871000 rw-p 001e4000 08:01 526144                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f213e871000-7f213e87e000 rw-p 00000000 00:00 0 
+7f213e893000-7f213e895000 rw-p 00000000 00:00 0 
+7f213e895000-7f213e899000 r--p 00000000 00:00 0                          [vvar]
+7f213e899000-7f213e89b000 r-xp 00000000 00:00 0                          [vdso]
+7f213e89b000-7f213e89c000 r--p 00000000 08:01 526139                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f213e89c000-7f213e8c4000 r-xp 00001000 08:01 526139                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f213e8c4000-7f213e8cf000 r--p 00029000 08:01 526139                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f213e8cf000-7f213e8d1000 r--p 00034000 08:01 526139                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f213e8d1000-7f213e8d2000 rw-p 00036000 08:01 526139                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f213e8d2000-7f213e8d3000 rw-p 00000000 00:00 0 
+7fff4b645000-7fff4b667000 rw-p 00000000 00:00 0                          [stack]
+Meaning:
+7f213e63c000-7f213e66e000 rw-s 00000000 00:01 1                          /SYSV00000000 (deleted)
+7f213e66e000-7f213e687000 rw-s 00000000 00:01 0                          /SYSV00000000 (deleted)
+our segments
+5) ./rm_shm 0 1
+Meaning:
+setting remove flag for segments in os memory,
+so when they will be detouched, they will be finally deleted
+6) (terminal A) ./writer
+   (terminal B) ./reader
+7) (terminal A)
+message 1
+(terminal B)
+Output:
+message 1
+Meaning:
+writer wrote info in shared memory,
+reader took it and displayed it
+8) (terminal A)
+Cntrl + D
+Output:
+Received 10 bytes (1 transfers)
+(terminal B)
+Output:
+Received 10 bytes (1 transfers)
+Meaning:
+writer tells the reader that the "session is over" by
+0 length text. Both processes exit properly and display
+statistical info
+9) unshare --ipc --fork --mount-proc bash
+Meaning:
+creating new ipc namespace
+10) (in newly created namespace)
+(terminal A) ./writer
+(terminal B) ./reader
+(terminal A) message 1
+(terminal B)
+Output:
+message 1
+Meaning:
+writer wrote info in shared memory,
+reader took it and displayed it
+11) (in newly created namespace)
+(terminal A)
+Cntrl + D
+Output:
+Received 10 bytes (1 transfers)
+(terminal B)
+Output:
+Received 10 bytes (1 transfers)
+Meaning:
+writer tells the reader that the "session is over" by
+0 length text. Both processes exit properly and display
+statistical info

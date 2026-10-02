@@ -1,0 +1,197 @@
+SYSTEM V SEMAPHORES — ШПАРГАЛКА
+
+ГЛАВНЫЕ ФУНКЦИИ:
+
+semget()
+    Создаёт новый semaphore set или получает ID существующего.
+
+semctl()
+    Управляет semaphore set:
+    - SETVAL    → установить значение одного semaphore
+    - GETVAL    → получить значение одного semaphore
+    - SETALL    → установить значения всех semaphore
+    - GETALL    → получить значения всех semaphore
+    - IPC_STAT  → получить информацию о set
+    - IPC_RMID  → удалить semaphore set
+
+semop()
+    Выполняет операции над semaphore:
+    - sem_op > 0 → увеличить значение
+    - sem_op = 0 → ждать, пока значение станет 0
+    - sem_op < 0 → уменьшить значение; если не хватает, процесс блокируется
+
+
+ФАЙЛЫ ЛАБОРАТОРНОЙ:
+
+sem_create.c
+    Создаёт semaphore set.
+    
+    Команда:
+        gcc sem_create.c -o create
+        ./create 2
+    
+    Результат:
+        Semaphore ID = XXXXX
+    
+    В данном коде создаётся 1 semaphore
+    и его значение устанавливается в 2.
+
+
+sem_op.c
+    Выполняет операцию над semaphore #0.
+
+    Компиляция:
+        gcc sem_op.c curr_time.c -o op
+
+    Увеличить на 1:
+        ./op XXXXX 1
+
+    Уменьшить на 1:
+        ./op XXXXX -1
+
+    Уменьшить на 3:
+        ./op XXXXX -3
+
+    Если значение semaphore = 2 и выполнить -3,
+    процесс заблокируется, потому что 2 < 3.
+
+
+sem_get_info.c
+    Показывает информацию о semaphore set.
+
+    Компиляция:
+        gcc sem_get_info.c -o info
+
+    Запуск:
+        ./info XXXXX
+
+    Показывает:
+        Value    → текущее значение semaphore
+        SEMPID   → PID процесса, который последним сделал semop()
+        SEMNCNT  → сколько процессов ждут возможности уменьшить semaphore
+        SEMZCNT  → сколько процессов ждут, пока semaphore станет 0
+
+
+sem_setall.c
+    Устанавливает значения всех semaphore в set.
+
+    Компиляция:
+        gcc sem_setall.c -o setall
+
+    Например:
+        ./setall XXXXX 3 2 1 0
+
+    Результат:
+        semaphore #0 = 3
+        semaphore #1 = 2
+        semaphore #2 = 1
+        semaphore #3 = 0
+
+
+sem_good_init.c
+    Показывает безопасную инициализацию semaphore set,
+    когда несколько процессов пытаются создать/использовать
+    один и тот же set одновременно.
+
+    Компиляция:
+        gcc sem_good_init.c -o init
+
+    Запуск:
+        ./init & ./init
+
+    Один процесс создаёт semaphore set,
+    второй обнаруживает, что set уже существует,
+    и ждёт, пока первый выполнит semop().
+
+    Для проверки используется:
+        sem_otime
+
+    sem_otime = время последнего semop().
+    При создании set оно равно 0.
+    После semop() становится ненулевым.
+
+
+sem_op_undo.c
+    Демонстрирует флаг SEM_UNDO.
+
+    Компиляция:
+        gcc sem_op_undo.c -o undo
+
+    Запуск:
+        ./undo XXXXX
+
+    В программе:
+        sop.sem_op = 2;
+        sop.sem_flg = SEM_UNDO;
+
+    То есть semaphore увеличивается на 2.
+
+    Если процесс завершится,
+    ядро автоматически отменит это изменение.
+
+    Например:
+
+        было:       2
+        процесс:   +2
+        стало:      4
+        процесс завершился
+        SEM_UNDO:   4 → 2
+
+
+UNION SEMUN:
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+
+Используется как 4-й аргумент semctl().
+
+Для SETVAL:
+    arg.val = 2;
+    semctl(semid, 0, SETVAL, arg);
+
+Для IPC_STAT:
+    arg.buf = &ds;
+    semctl(semid, 0, IPC_STAT, arg);
+
+Для SETALL:
+    arg.array = array;
+    semctl(semid, 0, SETALL, arg);
+
+
+УДАЛЕНИЕ SEMAPHORE:
+
+Посмотреть существующие semaphore:
+
+    ipcs -s
+
+Удалить semaphore set:
+
+    ipcrm -s SEMID
+
+Например:
+
+    ipcrm -s 12345
+
+Проверить:
+
+    ipcs -s
+
+
+ВАЖНО:
+
+После выполнения:
+
+    ./create 2
+
+semaphore НЕ удаляется автоматически.
+
+Программа заканчивается,
+но semaphore продолжает существовать в ядре.
+
+Поэтому после экспериментов его нужно удалить:
+
+    ipcs -s
+    ipcrm -s XXXXX
