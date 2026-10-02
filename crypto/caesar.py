@@ -1,6 +1,7 @@
 ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 def encrypt(key, text):
+    text = text.lower()
     res= ""
     for char in text:
         index = ALPHABET.find(char)
@@ -13,6 +14,7 @@ def encrypt(key, text):
     return res
 
 def decrypt(key, text):
+    text = text.lower()
     res= ""
     for char in text:
         index = ALPHABET.find(char)

@@ -17,6 +17,7 @@ def process_key(in_str):
     return res
 
 def encrypt(init_key, text):
+    text = text.lower()
     key = process_key(init_key)
     res = ""
     for char in text:
@@ -28,6 +29,7 @@ def encrypt(init_key, text):
     return res
 
 def decrypt(key, text):
+    text = text.lower()
     res = ""
     for char in text:
         index = key.find(char)
