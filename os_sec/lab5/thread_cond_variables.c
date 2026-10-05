@@ -49,12 +49,6 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    s = pthread_join(t1, NULL);
-
-    if (s != 0) {
-        fprintf(stderr, "pthread_join error");
-        exit(EXIT_FAILURE);
-    }
 
     s = pthread_mutex_lock(&threadMutex);
 
@@ -63,12 +57,15 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    // s = pthread_cond_wait(&cond, &threadMutex);
+    while (available == 0)
+    {
+        s = pthread_cond_wait(&cond, &threadMutex);
 
-    // if (s != 0) {
-    //     fprintf(stderr, "pthread_cond_wait error");
-    //     exit(EXIT_FAILURE);
-    // }
+        if (s != 0) {
+            fprintf(stderr, "pthread_cond_wait error");
+            exit(EXIT_FAILURE);
+        }
+    }
 
     available--;
     s = pthread_mutex_unlock(&threadMutex);
@@ -78,7 +75,16 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    
     sleep(3);
     printf("Main thread terminating at %s\n", currTime("%T"));
+    
+    s = pthread_join(t1, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join error");
+        exit(EXIT_FAILURE);
+    }
+
     exit(EXIT_SUCCESS);
 }

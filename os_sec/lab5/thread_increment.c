@@ -32,17 +32,17 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    s = pthread_create(&t2, NULL, threadFunc, loopsP);
-
-    if (s != 0) {
-        fprintf(stderr, "pthread_create");
-        exit(EXIT_FAILURE);
-    }
-
     s = pthread_join(t1, NULL);
 
     if (s != 0) {
         fprintf(stderr, "pthread_join");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_create(&t2, NULL, threadFunc, loopsP);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create");
         exit(EXIT_FAILURE);
     }
 

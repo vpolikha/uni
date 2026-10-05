@@ -6,6 +6,9 @@
 
 static void * threadFunc(void *arg)
 {
+    int oldState;
+
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldState);
     printf("New thread started\n");
 
     for (int i = 0; ; i++)

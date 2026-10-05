@@ -9,8 +9,8 @@ static char * array[ARR_SIZE] = {
     "Element 4",
     "Element 5",
 };
-static char buf[MAX_LENGTH];
-// static __thread char buf[MAX_LENGTH]; /* Use thread-local storage */
+// static char buf[MAX_LENGTH];
+static __thread char buf[MAX_LENGTH]; /* Use thread-local storage */
 
 char * getElement(int index)
 {

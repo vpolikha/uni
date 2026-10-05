@@ -1,0 +1,485 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+
+pthread_t t1;
+
+static void * threadFunc(void *arg)
+{
+    if (pthread_equal(t1, pthread_self())) {
+        printf("t1 matches with thread id\n");
+    } else {
+        printf("t1 doesn't match with thread id\n");
+    }
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    int s;
+    s = pthread_create(&t1, NULL, threadFunc, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Message from main()\n");
+    s = pthread_join(t1, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+
+static void * threadFunc(void *arg)
+{
+    // pthread_detach(pthread_self()); /* Call if thread is not created with DETACHED attribute */
+    char *s = (char *) arg;
+    printf("%s\n", s);
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    pthread_t t1;
+    pthread_attr_t attr;
+    int s;
+
+    s = pthread_attr_init(&attr); /* Assigns default values */
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_attr_init error");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_attr_setdetachstate error");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_create(&t1, &attr, threadFunc, "Hello world");
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    // pthread_detach(t1); /* Call if thread is not created with DETACHED attribute */
+
+    printf("Message from main()\n");
+    s = pthread_attr_destroy(&attr); /* No longer needed */
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_attr_destroy error");
+        exit(EXIT_FAILURE);
+    }
+
+    sleep(1); /* Give some time for the thread function to execute */
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include "get_element.h"
+
+static void * threadFunc(void *arg)
+{
+    char *el;
+    printf("Other thread about to call getElement()\n");
+    el = getElement(1);
+    printf("Other thread: element = %s\n", el);
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    pthread_t t;
+    int s;
+    char *el;
+    el = getElement(0);
+    printf("Main thread has called getElement()\n");
+    s = pthread_create(&t, NULL, threadFunc, NULL);
+
+    if (s != 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t, NULL);
+
+    if (s != 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Main thread: element = %s\n", el);
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+
+static void * threadFunc(void *arg)
+{
+    char *s = (char *) arg;
+    printf("%s\n", s);
+    size_t length = strlen(s);
+    size_t *lengthP = malloc(sizeof(size_t));
+    *lengthP = length;
+
+    return (void *) lengthP;
+}
+
+int main(int argc, char *argv[])
+{
+    pthread_t t1;
+    void *res;
+    int s;
+    s = pthread_create(&t1, NULL, threadFunc, "Hello world");
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Message from main()\n");
+    s = pthread_join(t1, &res);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join error");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Thread returned %d\n", *(int*) res);
+    free(res);
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+
+static void * threadFunc(void *arg)
+{
+    printf("New thread started\n");
+
+    for (int i = 0; ; i++)
+    {
+        printf("%d\n", i);
+        sleep(1); /* A cancellation point */
+    }
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    printf("Main thread started\n");
+    pthread_t t1;
+    void *res;
+    int s;
+    s = pthread_create(&t1, NULL, threadFunc, "Hello world");
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    sleep(3);
+    s = pthread_cancel(t1);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_cancel error");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t1, &res);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    if (res == PTHREAD_CANCELED) {
+        printf("Thread was canceled\n");
+    }
+
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+#include "curr_time.h"
+#define ARR_SIZE 5
+
+static int arr[ARR_SIZE];
+static int available = 0;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t threadMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void * threadFunc()
+{
+    printf("Thread 1 starting at %s\n", currTime("%T"));
+    int s;
+    s = pthread_mutex_lock(&threadMutex);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_mutex_lock error");
+        exit(EXIT_FAILURE);
+    }
+
+    available++;
+    s = pthread_mutex_unlock(&threadMutex);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_mutex_unlock error");
+        exit(EXIT_FAILURE);
+    }
+
+    pthread_cond_signal(&cond);
+    sleep(2);
+    printf("Thread 1 terminating at %s\n", currTime("%T"));
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    printf("Main thread starting at %s\n", currTime("%T"));
+    pthread_t t1;
+    void *res;
+    int s;
+    s = pthread_create(&t1, NULL, threadFunc, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create error");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t1, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join error");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_mutex_lock(&threadMutex);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_mutex_lock error");
+        exit(EXIT_FAILURE);
+    }
+
+    // s = pthread_cond_wait(&cond, &threadMutex);
+
+    // if (s != 0) {
+    //     fprintf(stderr, "pthread_cond_wait error");
+    //     exit(EXIT_FAILURE);
+    // }
+
+    available--;
+    s = pthread_mutex_unlock(&threadMutex);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_mutex_unlock error");
+        exit(EXIT_FAILURE);
+    }
+
+    sleep(3);
+    printf("Main thread terminating at %s\n", currTime("%T"));
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+static int glob = 0;
+static void *threadFunc(void *arg)
+{
+    int loops = *(int*) arg;
+    int loc, j;
+
+    for (j = 0; j < loops; j++) {
+        loc = glob;
+        loc++;
+        glob = loc;
+    }
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    pthread_t t1, t2;
+    int loops, s;
+    loops = (argc > 1) ? atoi(argv[1]) : 10000000;
+    int *loopsP = malloc(sizeof(int));
+    *loopsP = loops;
+
+    s = pthread_create(&t1, NULL, threadFunc, loopsP);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_create(&t2, NULL, threadFunc, loopsP);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t1, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t2, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("glob = %d\n", glob);
+    free(loopsP);
+    exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+static int glob = 0;
+static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static void *threadFunc(void *arg)
+{
+    int loops = *(int*) arg;
+    int loc, j, s;
+
+    for (j = 0; j < loops; j++) {
+        s = pthread_mutex_lock(&mtx);
+
+        if (s != 0) {
+            fprintf(stderr, "pthread_mutex_lock");
+            exit(EXIT_FAILURE);
+        }
+
+        loc = glob;
+        loc++;
+        glob = loc;
+
+        s = pthread_mutex_unlock(&mtx);
+
+        if (s != 0) {
+            fprintf(stderr, "pthread_mutex_unlock");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    pthread_t t1, t2;
+    int loops, s;
+    loops = (argc > 1) ? atoi(argv[1]) : 10000000;
+    int *loopsP = malloc(sizeof(int));
+    *loopsP = loops;
+
+    s = pthread_create(&t1, NULL, threadFunc, loopsP);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_create(&t2, NULL, threadFunc, loopsP);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_create");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t1, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join");
+        exit(EXIT_FAILURE);
+    }
+
+    s = pthread_join(t2, NULL);
+
+    if (s != 0) {
+        fprintf(stderr, "pthread_join");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("glob = %d\n", glob);
+    free(loopsP);
+    exit(EXIT_SUCCESS);
+}
+#include <time.h>
+#define BUF_SIZE 1000
+
+char * currTime(const char *format)
+{
+    static char buf[BUF_SIZE];
+    time_t t;
+    size_t s;
+    struct tm *tm;
+    t = time(NULL);
+    tm = localtime(&t);
+
+    if (tm == NULL) {
+        return NULL;
+    }
+
+    s = strftime(buf, BUF_SIZE, (format != NULL) ? format : "%c", tm);
+
+    return (s == 0) ? NULL : buf;
+}
+#include <stdio.h>
+#include <string.h>
+#define ARR_SIZE 5
+#define MAX_LENGTH 10
+static char * array[ARR_SIZE] = {
+    "Element 1",
+    "Element 2",
+    "Element 3",
+    "Element 4",
+    "Element 5",
+};
+static char buf[MAX_LENGTH];
+// static __thread char buf[MAX_LENGTH]; /* Use thread-local storage */
+
+char * getElement(int index)
+{
+    if (index >= ARR_SIZE) {
+        fprintf(stderr, "Unknown element\n");
+    } else {
+        strncpy(buf, array[index], MAX_LENGTH - 1);
+    }
+
+    return buf;
+}
