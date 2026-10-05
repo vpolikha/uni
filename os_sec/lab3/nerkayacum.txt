@@ -79,10 +79,27 @@ Meaning:
 writer tells the reader that the "session is over" by
 0 length text. Both processes exit properly and display
 statistical info
-9) unshare --ipc --fork --mount-proc bash
+9) (terminal_A)
+unshare --ipc --fork --mount-proc bash
 Meaning:
-creating new ipc namespace
-10) (in newly created namespace)
+creating new ipc namespace, old shared memories are no longer available
+creating new ones:
+./create 102400
+Output:
+0
+./create 204800
+Output:
+1
+./attach 0 1 (for getting PID in that namespace):
+SHMLBA = 4096 (0x1000), PID = 8560
+1: 0 ==> 0x7f0c87f62000
+2: 1 ==> 0x7f0c87f30000
+Sleeping 5 seconds
+^Z
+[1]+  Stopped                 ./attach 0 1
+10) (terminal_B) sudo nsenter --target 8560 --ipc bash
+Meaning:
+entering the already created namespace
 (terminal A) ./writer
 (terminal B) ./reader
 (terminal A) message 1
@@ -92,7 +109,7 @@ message 1
 Meaning:
 writer wrote info in shared memory,
 reader took it and displayed it
-11) (in newly created namespace)
+11)
 (terminal A)
 Cntrl + D
 Output:
