@@ -220,3 +220,61 @@ VALUES (@id, 1, 18, 10, 0);
 SELECT * FROM [Order Details] WHERE OrderID = @id;
 ROLLBACK TRANSACTION;
 GO
+
+
+
+
+
+
+
+
+
+
+
+
+
+USE NORTHWND
+GO
+CREATE OR ALTER TRIGGER trg_ORINS
+ON [ORDER DETAILS]
+AFTER INSERT
+AS
+BEGIN
+BEGIN TRANSACTION
+    UPDATE od
+    SET Discount += 0.05
+    FROM [Order Details] od
+    JOIN inserted i ON od.OrderID = i.OrderID
+    JOIN Orders o ON o.OrderID = i.OrderID
+    WHERE o.ShipCountry = 'Germany' 
+
+    UPDATE od
+    SET Discount += 0.1
+    FROM [Order Details] od
+    JOIN inserted i ON od.OrderID = i.OrderID
+    JOIN Orders o ON o.OrderID = i.OrderID
+    Where( SELECT SUM(UnitPrice * Quantity)
+    FROM [Order Details]
+    WHERE OrderID = i.OrderID ) > 1000
+
+IF @@ERROR <> 0
+BEGIN
+    ROLLBACK TRANSACTION
+    PRINT N'Սխալ է առաջացել'
+END
+ELSE
+BEGIN
+    COMMIT TRANSACTION
+END
+
+END
+GO
+
+INSERT INTO Orders (CustomerID, EmployeeID, OrderDate, RequiredDate, ShipCountry)
+VALUES ('ALFKI', 1, GETDATE(), DATEADD(DAY,7,GETDATE()), 'Germany' )
+
+DECLARE @NEWORDERID INT = SCOPE_IDENTITY();
+INSERT INTO [Order Details] (OrderID, ProductID, UnitPrice, Quantity, Discount)
+VALUES (@NEWORDERID, 1, 250, 5, 0.01 );
+
+select * from  [Order Details]  where ORDERID = @NEWORDERID
