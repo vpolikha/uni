@@ -1,38 +1,107 @@
+import json
 import enchant
-import time
+from wordfreq import iter_wordlist
 
 
-MONOGRAMS = [
-    "e", "t", "a", "o", "i", "n", "s", "h", "r", "d",
-    "l", "c", "u", "m", "w", "f", "g", "y", "p", "b",
-    "v", "k", "j", "x", "q", "z",
-]
+# ========================================================
+# WORD PATTERN INDEX
+# ========================================================
+
+class WordPatternIndex:
+
+    def __init__(self, index_file: str = "index.json") -> None:
+        self.__index_file = index_file
+        self.__index: dict = {}
 
 
-BIGRAMS = [
-    "th", "he", "in", "en", "nt", "re", "er", "an",
-    "ti", "es", "on", "at", "se", "nd", "or", "ar",
-    "al", "te", "co", "de", "to", "ra", "et", "ed",
-    "it", "sa", "em", "ro",
-]
+    # ========================================================
+    # WORD PATTERN
+    # ========================================================
+
+    def get_word_pattern(self, word: str) -> str:
+        letters = {}
+        pattern = []
+        next_number = 0
+
+        for char in word:
+            if char not in letters:
+                letters[char] = next_number
+                next_number += 1
+
+            pattern.append(str(letters[char]))
+
+        return "".join(pattern)
 
 
-TRIGRAMS = [
-    "the", "and", "tha", "ent", "ing", "ion", "tio",
-    "for", "nde", "has", "nce", "edt", "tis", "oft",
-    "sth", "men",
-]
+    # ========================================================
+    # INDEX BUILDING
+    # ========================================================
 
+    def build(self) -> None:
+        index = {}
+
+        for word in iter_wordlist("en", wordlist="large"):
+            word = word.lower()
+
+            if not word.isascii() or not word.isalpha():
+                continue
+
+            length = len(word)
+            pattern = self.get_word_pattern(word)
+
+            if length not in index:
+                index[length] = {}
+
+            if pattern not in index[length]:
+                index[length][pattern] = []
+
+            index[length][pattern].append(word)
+
+        self.__index = index
+
+
+    # ========================================================
+    # FILE OPERATIONS
+    # ========================================================
+
+    def save(self) -> None:
+        with open(self.__index_file, "w", encoding="utf-8") as file:
+            json.dump(self.__index, file, ensure_ascii=False, indent=4)
+
+
+    def load(self) -> None:
+        with open(self.__index_file, "r", encoding="utf-8") as file:
+            self.__index = json.load(file)
+
+
+    # ========================================================
+    # WORD SEARCH
+    # ========================================================
+
+    def get_words(self, word: str) -> list[str]:
+        word = word.lower()
+        length = str(len(word))
+        pattern = self.get_word_pattern(word)
+
+        if length not in self.__index:
+            return []
+
+        if pattern not in self.__index[length]:
+            return []
+
+        return self.__index[length][pattern]
+
+
+# ========================================================
+# ULTIMATE DECRYPTER
+# ========================================================
 
 class UltimateDecrypter:
 
-    # ========================================================
-    # INITIALIZATION
-    # ========================================================
-
-    def __init__(self) -> None:
+    def __init__(self, word_index: WordPatternIndex) -> None:
         self.__etalon_abc = "abcdefghijklmnopqrstuvwxyz"
         self.__dictionary = enchant.Dict("en_US")
+        self.__word_index = word_index
 
 
     # ========================================================
@@ -50,10 +119,10 @@ class UltimateDecrypter:
                 res += char
             else:
                 new_index = (index - key) % 26
-                new_char = self.__etalon_abc[new_index]
-                res += new_char
+                res += self.__etalon_abc[new_index]
 
         return res
+
 
     def find_caesar(self, text: str) -> str:
         text = text.lower()
@@ -77,408 +146,169 @@ class UltimateDecrypter:
 
 
     # ========================================================
-    # N-GRAM ANALYSIS
+    # REPLACEMENT MAPPING
     # ========================================================
 
-    def get_gramms(
-        self,
-        words: list[str],
-        n: int
-    ) -> list[str]:
-
-        res: list[str] = []
-
-        for word in words:
-            w_len = len(word)
-
-            if w_len < n:
-                continue
-
-            for i in range(0, w_len - n + 1):
-                res.append(word[i:i + n])
-
-        if len(res) == 0:
-            return [""]
-
-        return res
-
-    def index_grams(
-        self,
-        grams: list[str]
-    ) -> dict[str, int]:
-
-        res: dict[str, int] = {}
-
-        for gram in grams:
-            if gram not in res:
-                res[gram] = 1
-            else:
-                res[gram] += 1
-
-        return res
-
-    def get_gram_index(
-        self,
-        text: str,
-        max_n: int
-    ) -> dict[int, dict[str, int]]:
-
-        text = text.lower()
-        words = text.split()
-
-        res: dict[int, dict[str, int]] = {}
-
-        for n in range(1, max_n + 1):
-            grams = self.get_gramms(words, n)
-            res[n] = self.index_grams(grams)
-
-        return res
-
-    def get_top_grams(
-        self,
-        gram_index: dict[int, dict[str, int]],
-        n: int
-    ) -> list[str]:
-
-        return [
-            gram
-            for gram, count in sorted(
-                gram_index[n].items(),
-                key=lambda item: item[1],
-                reverse=True
-            )
-        ]
-
-
-    # ========================================================
-    # SUBSTITUTION MAPPING
-    # ========================================================
-
-    def apply_mapping(
-        self,
-        text: str,
-        mapping: dict[str, str]
-    ) -> str:
-
-        text = text.lower()
-        res = ""
-
-        for char in text:
-            if char in mapping:
-                res += mapping[char]
-            elif char.isalpha():
-                res += "?"
-            else:
-                res += char
-
-        return res
-
-    def add_mapping(
+    def add_word_mapping(
         self,
         mapping: dict[str, str],
-        cipher_char: str,
-        plain_char: str
-    ) -> bool:
-
-        if cipher_char in mapping:
-            return mapping[cipher_char] == plain_char
-
-        if plain_char in mapping.values():
-            return False
-
-        mapping[cipher_char] = plain_char
-
-        return True
-
-    def add_gram_mapping(
-        self,
-        mapping: dict[str, str],
-        cipher_gram: str,
-        plain_gram: str
-    ) -> bool:
-
-        if len(cipher_gram) != len(plain_gram):
-            return False
-
-        candidate = mapping.copy()
-
-        for cipher_char, plain_char in zip(
-            cipher_gram,
-            plain_gram
-        ):
-            if not self.add_mapping(
-                candidate,
-                cipher_char,
-                plain_char
-            ):
-                return False
-
-        mapping.clear()
-        mapping.update(candidate)
-
-        return True
-
-    def is_mapping_valid(
-            self,
-            text: str,
-            mapping: dict[str, str]
-        ) -> bool:
-    
-            decrypted = self.apply_mapping(
-                text,
-                mapping
-            )
-    
-            words = decrypted.split()
-    
-            for word in words:
-                if "?" not in word:
-                    # print("checking:", word)
-                    if not self.__dictionary.check(word):
-                        return False
-    
-            return True
-
-    # ========================================================
-    # SUBSTITUTION BACKTRACKING
-    # ========================================================
-
-    def solve(
-        self,
-        cipher_grams: list[str],
-        english_grams: list[str],
-        index: int,
-        mapping: dict[str, str],
-        level: str,
-        text: str,
+        cipher_word: str,
+        plain_word: str
     ) -> dict[str, str] | None:
 
-        indent = "    " * index
+        candidate_mapping = mapping.copy()
 
-        if index >= len(cipher_grams):
-            # print(
-            #     f"{indent}SUCCESS [{level}]"
-            # )
-            # print(
-            #     f"{indent}Mapping: {mapping}"
-            # )
+        for cipher_char, plain_char in zip(cipher_word, plain_word):
+            if cipher_char in candidate_mapping:
+                if candidate_mapping[cipher_char] != plain_char:
+                    return None
+            else:
+                if plain_char in candidate_mapping.values():
+                    return None
+
+                candidate_mapping[cipher_char] = plain_char
+
+        return candidate_mapping
+
+
+    def get_valid_candidates(
+        self,
+        cipher_word: str,
+        mapping: dict[str, str]
+    ) -> list[str]:
+
+        candidates = self.__word_index.get_words(cipher_word)
+        valid_candidates = []
+
+        for plain_word in candidates:
+            candidate_mapping = self.add_word_mapping(
+                mapping,
+                cipher_word,
+                plain_word
+            )
+
+            if candidate_mapping is not None:
+                valid_candidates.append(plain_word)
+
+        return valid_candidates
+
+
+    def get_replacement_key(self, mapping: dict[str, str]) -> str:
+        return "".join(mapping.get(c, c) for c in self.__etalon_abc)
+
+
+    # ========================================================
+    # REPLACEMENT BACKTRACKING
+    # ========================================================
+
+    def solve_replacement(
+        self,
+        words: list[str],
+        mapping: dict[str, str]
+    ) -> dict[str, str] | None:
+
+        if len(words) == 0:
             return mapping
 
-        cipher_gram = cipher_grams[index]
+        best_word = None
+        best_candidates = None
 
-        # print()
-        # print(
-        #     f"{indent}[{level} {index + 1}/{len(cipher_grams)}]"
-        # )
-        # print(
-        #     f"{indent}Cipher gram: {cipher_gram}"
-        # )
+        for word in words:
+            candidates = self.get_valid_candidates(word, mapping)
 
-        for english_gram in english_grams:
+            if len(candidates) == 0:
+                return None
 
-            candidate_mapping = mapping.copy()
-
-            # print(
-            #     f"{indent}TRY: "
-            #     f"{cipher_gram} -> {english_gram}"
-            # )
-
-            if not self.add_gram_mapping(
-                candidate_mapping,
-                cipher_gram,
-                english_gram
+            if (
+                best_candidates is None
+                or len(candidates) < len(best_candidates)
+                or (
+                    len(candidates) == len(best_candidates)
+                    and len(word) > len(best_word)
+                )
             ):
-                # print(
-                #     f"{indent}  REJECT: conflict"
-                # )
+                best_word = word
+                best_candidates = candidates
+
+        remaining_words = words.copy()
+        remaining_words.remove(best_word)
+
+        print()
+        print("WORD:", best_word)
+        print("CANDIDATES:", len(best_candidates))
+
+        for plain_word in best_candidates:
+            candidate_mapping = self.add_word_mapping(
+                mapping,
+                best_word,
+                plain_word
+            )
+
+            if candidate_mapping is None:
                 continue
-            if not self.is_mapping_valid(
-                text,
+
+            print("TRY:", best_word, "->", plain_word)
+
+            result = self.solve_replacement(
+                remaining_words,
                 candidate_mapping
-            ):
-                # print(
-                #     f"{indent}  REJECT: invalid word"
-                # )
-                continue
-            # print(
-            #     f"{indent}  ACCEPT"
-            # )
-            # print(
-            #     f"{indent}  Mapping: "
-            #     f"{candidate_mapping}"
-            # )
-
-            result = self.solve(
-                cipher_grams,
-                english_grams,
-                index + 1,
-                candidate_mapping,
-                level,
-                text
             )
 
             if result is not None:
                 return result
 
-            # print(
-            #     f"{indent}BACKTRACK: "
-            #     f"{cipher_gram} -> {english_gram}"
-            # )
-
-        # print()
-        # print(
-        #     f"{indent}NO SOLUTION "
-        #     f"[{level} {index + 1}]"
-        # )
-
         return None
 
 
     # ========================================================
-    # MAIN SUBSTITUTION CIPHER ANALYSIS
+    # REPLACEMENT CIPHER
     # ========================================================
 
     def find_replacement(self, text: str) -> str:
-        gram_index = self.get_gram_index(text, 3)
+        words = text.lower().split()
+        mapping = {}
 
-        cipher_trigrams = self.get_top_grams(
-            gram_index,
-            3
-        )
+        result = self.solve_replacement(words, mapping)
 
-        cipher_bigrams = self.get_top_grams(
-            gram_index,
-            2
-        )
-
-        cipher_monograms = self.get_top_grams(
-            gram_index,
-            1
-        )
+        if result is None:
+            return ""
 
         print()
-        print("========================================================")
-        print("SUBSTITUTION SEARCH")
-        print("========================================================")
+        print("FINAL MAPPING:", result)
+        print("REPLACEMENT KEY:", self.get_replacement_key(result))
 
-        print()
-        print("Cipher trigrams:")
-        print(cipher_trigrams)
+        decrypted = ""
 
-        print()
-        print("Cipher bigrams:")
-        print(cipher_bigrams)
+        for char in text.lower():
+            decrypted += result.get(char, char)
 
-        print()
-        print("Cipher monograms:")
-        print(cipher_monograms)
-
-        mapping: dict[str, str] = {}
-
-        print()
-        print("========================================================")
-        print("TRIGRAM LEVEL")
-        print("========================================================")
-
-        mapping = self.solve(
-            cipher_trigrams,
-            TRIGRAMS,
-            0,
-            mapping,
-            "TRIGRAM",
-            text,
-        )
-
-        if mapping is None:
-            print()
-            print("TRIGRAM SEARCH FAILED")
-            # return ""
-            mapping = {}
-
-        print()
-        print("========================================================")
-        print("BIGRAM LEVEL")
-        print("========================================================")
-
-        mapping = self.solve(
-            cipher_bigrams,
-            BIGRAMS,
-            0,
-            mapping,
-            "BIGRAM",
-            text,
-        )
-
-        if mapping is None:
-            print()
-            print("BIGRAM SEARCH FAILED")
-            # return ""
-            mapping = {}
-
-        print()
-        print("========================================================")
-        print("MONOGRAM LEVEL")
-        print("========================================================")
-
-        mapping = self.solve(
-            cipher_monograms,
-            MONOGRAMS,
-            0,
-            mapping,
-            "MONOGRAM",
-            text,
-        )
-
-        if mapping is None:
-            print()
-            print("MONOGRAM SEARCH FAILED")
-            # return ""
-            mapping = {}
-
-        print()
-        print("========================================================")
-        print("FINAL MAPPING")
-        print("========================================================")
-
-        print(mapping)
-
-        return self.apply_mapping(
-            text,
-            mapping
-        )
+        return decrypted
 
 
-# ============================================================
-# PROGRAM START
-# ============================================================
+# ========================================================
+# PROGRAM
+# ========================================================
 
-decrypter = UltimateDecrypter()
+word_index = WordPatternIndex()
+
+word_index.build()
+word_index.save()
+word_index.load()
+
+print(word_index.get_words("hello"))
+print(word_index.get_words("there"))
+
+decrypter = UltimateDecrypter(word_index)
 
 enc_text = "Gdaysbpcnkp tnkvbjqksy dl rjmbnkr"
-enc_text_1 = "rjmbnkr"
 
 caesar_solution = decrypter.find_caesar(enc_text)
 
 if caesar_solution != "":
-    print(
-        f"Caesar solution for {enc_text}:\n"
-        + caesar_solution
-    )
+    print(f"Caesar solution for {enc_text}:\n{caesar_solution}")
 
-start = time.perf_counter()
-
-replacement_solution = decrypter.find_replacement(
-    enc_text
-)
-
-end = time.perf_counter()
-print(f"Time: {end - start:.6f} seconds")
+replacement_solution = decrypter.find_replacement(enc_text)
 
 print()
-print(
-    f"Replacement solution for {enc_text}:"
-)
-
-print(
-    replacement_solution
-)
+print(f"Replacement solution for {enc_text}:")
+print(replacement_solution)
