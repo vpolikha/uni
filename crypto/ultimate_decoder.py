@@ -295,9 +295,6 @@ word_index.build()
 word_index.save()
 word_index.load()
 
-print(word_index.get_words("hello"))
-print(word_index.get_words("there"))
-
 decrypter = UltimateDecrypter(word_index)
 
 enc_text = "Gdaysbpcnkp tnkvbjqksy dl rjmbnkr"
