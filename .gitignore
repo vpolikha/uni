@@ -1,2 +1,3 @@
 venv
 sql/adtprocs.sql
+__pycache__
