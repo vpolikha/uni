@@ -1,0 +1,863 @@
+nelal@nelalpc:~/Desktop/tor-browser/Browser/Downloads/lab4$ ls -R .
+.:
+ anon_mmap     mmap                           writer-reader
+ anon_mmap.c   mmap.c                        'Լաբորատոր աշխատանք 4.pdf'
+ mcat          nerkayacum_vladimir_lab4.txt
+ mcat.c        prompt.txt
+
+./writer-reader:
+binary_sems.c  binary_sems.h  reader.c  semun.h  shm.h  writer.c
+
+
+#ifdef USE_MAP_ANON
+# define _BSD_SOURCE
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
+int main(int argc, char *argv[])
+{
+	int *addr; /* Pointer to shared memory region */
+
+	#ifdef USE_MAP_ANON /* Use MAP_ANONYMOUS */
+		addr = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+
+		if (addr == MAP_FAILED) {
+			fprintf(stderr, "mmap error");
+			exit(EXIT_FAILURE);
+		}
+	#else /* Map /dev/zero */
+		int fd;
+		fd = open("/dev/zero", O_RDWR);
+
+		if (fd == -1) {
+			fprintf(stderr, "open error");
+			exit(EXIT_FAILURE);
+		}
+
+		addr = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+		if (addr == MAP_FAILED) {
+			fprintf(stderr, "mmap error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (close(fd) == -1) { /* No longer needed */
+			fprintf(stderr, "close error");
+			exit(EXIT_FAILURE);
+		}
+	#endif
+
+	*addr = 1; /* Initialize integer in mapped region */
+
+	switch (fork()) { /* Parent and child share mapping */
+		case -1:
+			fprintf(stderr, "fork error");
+			exit(EXIT_FAILURE);
+		case 0: /* Child: increment shared integer and exit */
+			printf("Child started, value = %d\n", *addr);
+			(*addr)++;
+			if (munmap(addr, sizeof(int)) == -1) {
+				fprintf(stderr, "munmap error");
+				exit(EXIT_FAILURE);
+			}
+			exit(EXIT_SUCCESS);
+		default: /* Parent: wait for child to terminate */
+			if (wait(NULL) == -1) {
+				fprintf(stderr, "wait error");
+				exit(EXIT_FAILURE);
+			}
+
+			printf("In parent, value = %d\n", *addr);
+
+			if (munmap(addr, sizeof(int)) == -1) {
+				fprintf(stderr, "munmap error");
+				exit(EXIT_FAILURE);
+			}
+
+			exit(EXIT_SUCCESS);
+	}
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+int main(int argc, char *argv[])
+{
+	char *addr;
+	int fd;
+	struct stat sb;
+
+	if (argc != 2) {
+		fprintf(stderr, "Usage error: %s file\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	fd = open(argv[1], O_RDONLY);
+
+	if (fd == -1) {
+		fprintf(stderr, "open error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Obtain the size of the file and use it to specify the size of
+	the mapping and the size of the buffer to be written */
+	if (fstat(fd, &sb) == -1) {
+		fprintf(stderr, "fstat error");
+		exit(EXIT_FAILURE);
+	}
+
+	addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+	if (addr == MAP_FAILED) {
+		fprintf(stderr, "mmap error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (write(STDOUT_FILENO, addr, sb.st_size) != sb.st_size) {
+		fprintf(stderr, "partial/failed write");
+		exit(EXIT_FAILURE);
+	}
+
+	exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#define MEM_SIZE 15
+
+int main(int argc, char *argv[])
+{
+	char *addr;
+	int fd;
+
+	if (argc < 2) {
+        fprintf(stderr, "Usage error: %s file [new-value]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	fd = open(argv[1], O_RDWR);
+
+	if (fd == -1) {
+		fprintf(stderr, "open error");
+		exit(EXIT_FAILURE);
+	}
+
+	addr = mmap(NULL, MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	if (addr == MAP_FAILED) {
+		fprintf(stderr, "mmap error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (close(fd) == -1) { /* No longer need 'fd' */
+		fprintf(stderr, "close error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Secure practice: output at most MEM_SIZE bytes */
+    printf("Current string=%.*s\n", MEM_SIZE, addr);
+
+	if (argc > 2) { /* Update contents of region */
+		if (strlen(argv[2]) >= MEM_SIZE) {
+			fprintf(stderr, "'new-value' too large\n");
+			exit(EXIT_FAILURE);
+		}
+
+		memset(addr, 0, MEM_SIZE); /* Zero out region */
+		strncpy(addr, argv[2], MEM_SIZE - 1);
+
+		if (msync(addr, MEM_SIZE, MS_SYNC) == -1) {
+			fprintf(stderr, "msync");
+			exit(EXIT_FAILURE);
+		}
+
+		printf("Copied \"%s\" to shared memory\n", argv[2]);
+	}
+
+	exit(EXIT_SUCCESS);
+}
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <errno.h>
+#include "semun.h"
+#include "binary_sems.h"
+
+Boolean bsUseSemUndo = FALSE;
+
+int initSemAvailable(int semId, int semNum) /* Initialize semaphore to 1 (i.e., "available") */
+{
+	union semun arg;
+	arg.val = 1;
+
+	return semctl(semId, semNum, SETVAL, arg);
+}
+
+int initSemInUse(int semId, int semNum) /* Initialize semaphore to 0 (i.e., "in use") */
+{
+	union semun arg;
+	arg.val = 0;
+
+	return semctl(semId, semNum, SETVAL, arg);
+}
+
+int reserveSem(int semId, int semNum) /* Reserve semaphore - decrement it by 1 */
+{
+	struct sembuf sops;
+	sops.sem_num = semNum;
+	sops.sem_op = -1;
+	sops.sem_flg = bsUseSemUndo ? SEM_UNDO : 0;
+
+	return semop(semId, &sops, 1);
+}
+
+int releaseSem(int semId, int semNum) /* Release semaphore - increment it by 1 */
+{
+	struct sembuf sops;
+	sops.sem_num = semNum;
+	sops.sem_op = 1;
+	sops.sem_flg = bsUseSemUndo ? SEM_UNDO : 0;
+
+	return semop(semId, &sops, 1);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+	int semid, shmid, transfers, bytes;
+	struct shmseg *shmp;
+
+	/* Get IDs for semaphore set and shared memory created by writer */
+	semid = semget(SEM_KEY, 0, 0);
+
+	if (semid == -1) {
+		fprintf(stderr, "semget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmid = shmget(SHM_KEY, 0, 0);
+
+	if (shmid == -1) {
+		fprintf(stderr, "shmget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmp = shmat(shmid, NULL, SHM_RDONLY);
+
+	if (shmp == (void *) -1) {
+		fprintf(stderr, "shmat error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Transfer blocks of data from shared memory to stdout */
+	for (transfers = 0, bytes = 0; ; transfers++) {
+		if (reserveSem(semid, READ_SEM) == -1) { /* Wait for our turn */
+			fprintf(stderr, "reserveSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (shmp->cnt == 0) { /* Writer encountered EOF */
+			break;
+		}
+
+		bytes += shmp->cnt;
+
+		if (write(STDOUT_FILENO, shmp->buf, shmp->cnt) != shmp->cnt) {
+			fprintf(stderr, "partial/failed write");
+			exit(EXIT_FAILURE);
+		}
+
+		if (releaseSem(semid, WRITE_SEM) == -1) { /* Give writer a turn */
+			fprintf(stderr, "releaseSem error");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (shmdt(shmp) == -1) {
+		fprintf(stderr, "shmdt error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Give writer one more turn, so it can clean up */
+	if (releaseSem(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "releaseSem error");
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(stderr, "Received %d bytes (%d transfers)\n", bytes, transfers);
+	exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "semun.h"
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+	int semid, shmid, bytes, transfers;
+	struct shmseg *shmp;
+	union semun dummy;
+	semid = semget(SEM_KEY, 2, IPC_CREAT | OBJ_PERMS);
+
+	if (semid == -1) {
+		fprintf(stderr, "semget error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (initSemAvailable(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "initSemAvailable error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (initSemInUse(semid, READ_SEM) == -1) {
+		fprintf(stderr, "initSemInUse error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmid = shmget(SHM_KEY, sizeof(struct shmseg), IPC_CREAT | OBJ_PERMS);
+
+	if (shmid == -1) {
+		fprintf(stderr, "shmget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmp = shmat(shmid, NULL, 0);
+
+	if (shmp == (void *) -1) {
+		fprintf(stderr, "shmat error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Transfer blocks of data from stdin to shared memory */
+	for (transfers = 0, bytes = 0; ; transfers++, bytes += shmp->cnt) {
+		if (reserveSem(semid, WRITE_SEM) == -1) { /* Wait for our turn */
+			fprintf(stderr, "reserveSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		shmp->cnt = read(STDIN_FILENO, shmp->buf, BUF_SIZE);
+
+		if (shmp->cnt == -1) {
+			fprintf(stderr, "read error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (releaseSem(semid, READ_SEM) == -1) { /* Give reader a turn */
+			fprintf(stderr, "releaseSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		/* Have we reached EOF? We test this after giving the reader
+		a turn so that it can see the 0 value in shmp->cnt. */
+		if (shmp->cnt == 0) {
+			break;
+		}
+	}
+
+	/* Wait until reader has let us have one more turn. We then know
+	reader has finished, and so we can delete the IPC objects. */
+	if (reserveSem(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "reserveSem error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (semctl(semid, 0, IPC_RMID, dummy) == -1) {
+		fprintf(stderr, "semctl error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (shmdt(shmp) == -1) {
+		fprintf(stderr, "shmdt error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (shmctl(shmid, IPC_RMID, 0) == -1) {
+		fprintf(stderr, "shmctl error");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("Sent %d bytes (%d transfers)\n", bytes, transfers);
+	exit(EXIT_SUCCESS);
+}
+#ifndef BINARY_SEMS_H /* Prevent accidental double inclusion */
+#define BINARY_SEMS_H
+
+typedef enum { FALSE, TRUE } Boolean;
+extern Boolean bsUseSemUndo; /* Use SEM_UNDO during semop()? */
+
+int initSemAvailable(int semId, int semNum);
+int initSemInUse(int semId, int semNum);
+int reserveSem(int semId, int semNum);
+int releaseSem(int semId, int semNum);
+
+#endif
+#include <sys/sem.h>
+
+union semun { /* Used in calls to semctl() */
+    int val;
+    struct semid_ds * buf;
+    unsigned short * array;
+#if defined(__linux__)
+    struct seminfo * __buf;
+#endif
+};
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include "binary_sems.h" /* Declares our binary semaphore functions */
+
+#define SHM_KEY 0x1234 /* Key for shared memory segment */
+#define SEM_KEY 0x5678 /* Key for semaphore set */
+#define OBJ_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) /* Permissions for our IPC objects */
+#define WRITE_SEM 0 /* Writer has access to shared memory */
+#define READ_SEM 1 /* Reader has access to shared memory */
+#ifndef BUF_SIZE /* Allow "cc -D" to override definition */
+#define BUF_SIZE 1024 /* Size of transfer buffer */
+#endif
+
+struct shmseg { /* Defines structure of shared memory segment */
+	int cnt; /* Number of bytes used in 'buf' */
+	char buf[BUF_SIZE]; /* Data being transferred */
+};
+#ifdef USE_MAP_ANON
+# define _BSD_SOURCE
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
+int main(int argc, char *argv[])
+{
+	int *addr; /* Pointer to shared memory region */
+
+	#ifdef USE_MAP_ANON /* Use MAP_ANONYMOUS */
+		addr = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+
+		if (addr == MAP_FAILED) {
+			fprintf(stderr, "mmap error");
+			exit(EXIT_FAILURE);
+		}
+	#else /* Map /dev/zero */
+		int fd;
+		fd = open("/dev/zero", O_RDWR);
+
+		if (fd == -1) {
+			fprintf(stderr, "open error");
+			exit(EXIT_FAILURE);
+		}
+
+		addr = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+		if (addr == MAP_FAILED) {
+			fprintf(stderr, "mmap error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (close(fd) == -1) { /* No longer needed */
+			fprintf(stderr, "close error");
+			exit(EXIT_FAILURE);
+		}
+	#endif
+
+	*addr = 1; /* Initialize integer in mapped region */
+
+	switch (fork()) { /* Parent and child share mapping */
+		case -1:
+			fprintf(stderr, "fork error");
+			exit(EXIT_FAILURE);
+		case 0: /* Child: increment shared integer and exit */
+			printf("Child started, value = %d\n", *addr);
+			(*addr)++;
+			if (munmap(addr, sizeof(int)) == -1) {
+				fprintf(stderr, "munmap error");
+				exit(EXIT_FAILURE);
+			}
+			exit(EXIT_SUCCESS);
+		default: /* Parent: wait for child to terminate */
+			if (wait(NULL) == -1) {
+				fprintf(stderr, "wait error");
+				exit(EXIT_FAILURE);
+			}
+
+			printf("In parent, value = %d\n", *addr);
+
+			if (munmap(addr, sizeof(int)) == -1) {
+				fprintf(stderr, "munmap error");
+				exit(EXIT_FAILURE);
+			}
+
+			exit(EXIT_SUCCESS);
+	}
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+int main(int argc, char *argv[])
+{
+	char *addr;
+	int fd;
+	struct stat sb;
+
+	if (argc != 2) {
+		fprintf(stderr, "Usage error: %s file\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	fd = open(argv[1], O_RDONLY);
+
+	if (fd == -1) {
+		fprintf(stderr, "open error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Obtain the size of the file and use it to specify the size of
+	the mapping and the size of the buffer to be written */
+	if (fstat(fd, &sb) == -1) {
+		fprintf(stderr, "fstat error");
+		exit(EXIT_FAILURE);
+	}
+
+	addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+	if (addr == MAP_FAILED) {
+		fprintf(stderr, "mmap error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (write(STDOUT_FILENO, addr, sb.st_size) != sb.st_size) {
+		fprintf(stderr, "partial/failed write");
+		exit(EXIT_FAILURE);
+	}
+
+	exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#define MEM_SIZE 15
+
+int main(int argc, char *argv[])
+{
+	char *addr;
+	int fd;
+
+	if (argc < 2) {
+        fprintf(stderr, "Usage error: %s file [new-value]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	fd = open(argv[1], O_RDWR);
+
+	if (fd == -1) {
+		fprintf(stderr, "open error");
+		exit(EXIT_FAILURE);
+	}
+
+	addr = mmap(NULL, MEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	if (addr == MAP_FAILED) {
+		fprintf(stderr, "mmap error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (close(fd) == -1) { /* No longer need 'fd' */
+		fprintf(stderr, "close error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Secure practice: output at most MEM_SIZE bytes */
+    printf("Current string=%.*s\n", MEM_SIZE, addr);
+
+	if (argc > 2) { /* Update contents of region */
+		if (strlen(argv[2]) >= MEM_SIZE) {
+			fprintf(stderr, "'new-value' too large\n");
+			exit(EXIT_FAILURE);
+		}
+
+		memset(addr, 0, MEM_SIZE); /* Zero out region */
+		strncpy(addr, argv[2], MEM_SIZE - 1);
+
+		if (msync(addr, MEM_SIZE, MS_SYNC) == -1) {
+			fprintf(stderr, "msync");
+			exit(EXIT_FAILURE);
+		}
+
+		printf("Copied \"%s\" to shared memory\n", argv[2]);
+	}
+
+	exit(EXIT_SUCCESS);
+}
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <errno.h>
+#include "semun.h"
+#include "binary_sems.h"
+
+Boolean bsUseSemUndo = FALSE;
+
+int initSemAvailable(int semId, int semNum) /* Initialize semaphore to 1 (i.e., "available") */
+{
+	union semun arg;
+	arg.val = 1;
+
+	return semctl(semId, semNum, SETVAL, arg);
+}
+
+int initSemInUse(int semId, int semNum) /* Initialize semaphore to 0 (i.e., "in use") */
+{
+	union semun arg;
+	arg.val = 0;
+
+	return semctl(semId, semNum, SETVAL, arg);
+}
+
+int reserveSem(int semId, int semNum) /* Reserve semaphore - decrement it by 1 */
+{
+	struct sembuf sops;
+	sops.sem_num = semNum;
+	sops.sem_op = -1;
+	sops.sem_flg = bsUseSemUndo ? SEM_UNDO : 0;
+
+	return semop(semId, &sops, 1);
+}
+
+int releaseSem(int semId, int semNum) /* Release semaphore - increment it by 1 */
+{
+	struct sembuf sops;
+	sops.sem_num = semNum;
+	sops.sem_op = 1;
+	sops.sem_flg = bsUseSemUndo ? SEM_UNDO : 0;
+
+	return semop(semId, &sops, 1);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+	int semid, shmid, transfers, bytes;
+	struct shmseg *shmp;
+
+	/* Get IDs for semaphore set and shared memory created by writer */
+	semid = semget(SEM_KEY, 0, 0);
+
+	if (semid == -1) {
+		fprintf(stderr, "semget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmid = shmget(SHM_KEY, 0, 0);
+
+	if (shmid == -1) {
+		fprintf(stderr, "shmget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmp = shmat(shmid, NULL, SHM_RDONLY);
+
+	if (shmp == (void *) -1) {
+		fprintf(stderr, "shmat error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Transfer blocks of data from shared memory to stdout */
+	for (transfers = 0, bytes = 0; ; transfers++) {
+		if (reserveSem(semid, READ_SEM) == -1) { /* Wait for our turn */
+			fprintf(stderr, "reserveSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (shmp->cnt == 0) { /* Writer encountered EOF */
+			break;
+		}
+
+		bytes += shmp->cnt;
+
+		if (write(STDOUT_FILENO, shmp->buf, shmp->cnt) != shmp->cnt) {
+			fprintf(stderr, "partial/failed write");
+			exit(EXIT_FAILURE);
+		}
+
+		if (releaseSem(semid, WRITE_SEM) == -1) { /* Give writer a turn */
+			fprintf(stderr, "releaseSem error");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (shmdt(shmp) == -1) {
+		fprintf(stderr, "shmdt error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Give writer one more turn, so it can clean up */
+	if (releaseSem(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "releaseSem error");
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(stderr, "Received %d bytes (%d transfers)\n", bytes, transfers);
+	exit(EXIT_SUCCESS);
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "semun.h"
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+	int semid, shmid, bytes, transfers;
+	struct shmseg *shmp;
+	union semun dummy;
+	semid = semget(SEM_KEY, 2, IPC_CREAT | OBJ_PERMS);
+
+	if (semid == -1) {
+		fprintf(stderr, "semget error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (initSemAvailable(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "initSemAvailable error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (initSemInUse(semid, READ_SEM) == -1) {
+		fprintf(stderr, "initSemInUse error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmid = shmget(SHM_KEY, sizeof(struct shmseg), IPC_CREAT | OBJ_PERMS);
+
+	if (shmid == -1) {
+		fprintf(stderr, "shmget error");
+		exit(EXIT_FAILURE);
+	}
+
+	shmp = shmat(shmid, NULL, 0);
+
+	if (shmp == (void *) -1) {
+		fprintf(stderr, "shmat error");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Transfer blocks of data from stdin to shared memory */
+	for (transfers = 0, bytes = 0; ; transfers++, bytes += shmp->cnt) {
+		if (reserveSem(semid, WRITE_SEM) == -1) { /* Wait for our turn */
+			fprintf(stderr, "reserveSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		shmp->cnt = read(STDIN_FILENO, shmp->buf, BUF_SIZE);
+
+		if (shmp->cnt == -1) {
+			fprintf(stderr, "read error");
+			exit(EXIT_FAILURE);
+		}
+
+		if (releaseSem(semid, READ_SEM) == -1) { /* Give reader a turn */
+			fprintf(stderr, "releaseSem error");
+			exit(EXIT_FAILURE);
+		}
+
+		/* Have we reached EOF? We test this after giving the reader
+		a turn so that it can see the 0 value in shmp->cnt. */
+		if (shmp->cnt == 0) {
+			break;
+		}
+	}
+
+	/* Wait until reader has let us have one more turn. We then know
+	reader has finished, and so we can delete the IPC objects. */
+	if (reserveSem(semid, WRITE_SEM) == -1) {
+		fprintf(stderr, "reserveSem error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (semctl(semid, 0, IPC_RMID, dummy) == -1) {
+		fprintf(stderr, "semctl error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (shmdt(shmp) == -1) {
+		fprintf(stderr, "shmdt error");
+		exit(EXIT_FAILURE);
+	}
+
+	if (shmctl(shmid, IPC_RMID, 0) == -1) {
+		fprintf(stderr, "shmctl error");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("Sent %d bytes (%d transfers)\n", bytes, transfers);
+	exit(EXIT_SUCCESS);
+}
+#ifndef BINARY_SEMS_H /* Prevent accidental double inclusion */
+#define BINARY_SEMS_H
+
+typedef enum { FALSE, TRUE } Boolean;
+extern Boolean bsUseSemUndo; /* Use SEM_UNDO during semop()? */
+
+int initSemAvailable(int semId, int semNum);
+int initSemInUse(int semId, int semNum);
+int reserveSem(int semId, int semNum);
+int releaseSem(int semId, int semNum);
+
+#endif
+#include <sys/sem.h>
+
+union semun { /* Used in calls to semctl() */
+    int val;
+    struct semid_ds * buf;
+    unsigned short * array;
+#if defined(__linux__)
+    struct seminfo * __buf;
+#endif
+};
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include "binary_sems.h" /* Declares our binary semaphore functions */
+
+#define SHM_KEY 0x1234 /* Key for shared memory segment */
+#define SEM_KEY 0x5678 /* Key for semaphore set */
+#define OBJ_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) /* Permissions for our IPC objects */
+#define WRITE_SEM 0 /* Writer has access to shared memory */
+#define READ_SEM 1 /* Reader has access to shared memory */
+#ifndef BUF_SIZE /* Allow "cc -D" to override definition */
+#define BUF_SIZE 1024 /* Size of transfer buffer */
+#endif
+
+struct shmseg { /* Defines structure of shared memory segment */
+	int cnt; /* Number of bytes used in 'buf' */
+	char buf[BUF_SIZE]; /* Data being transferred */
+};

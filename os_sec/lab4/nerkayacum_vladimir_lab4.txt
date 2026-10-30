@@ -1,0 +1,337 @@
+1)
+gcc mmap.c -o mmap
+gcc mcat.c -o mcat
+gcc anon_mmap.c -o anon_mmap
+2) echo "TEXT-TEXT-TEXT" > text.txt
+3) ./mcat text.txt
+Output:
+TEXT-TEXT-TEXT
+4) creating 1K file "test1k"
+dd if=/dev/zero of=test1k bs=1K count=1
+5) ./mmap test1k test_text!
+Output:
+Current string=
+Copied "test_text!" to shared memory
+Meaning:
+file was empty (first 15 bites), now there is inputed text and \0
+6) changeing mmap.c (adding sleep(5) ater mmap())
+gcc mmap.c -o mmap
+./mmap test1k test_new!
+Ctrl+Z
+jobs -l
+Output:
+[1]+ 10405 Stopped                 ./mmap test1k test_new!
+7)
+cat /proc/10405/maps
+7e6dcf831000-7e6dcf832000 rw-s 00000000 08:02 6298257                    /home/nelal/lab4/test1k
+8) In order to get SIGBUS, we need our mapping to be bigger than our file and access memory in mapping, but out of the file.
+Considering, that OS works with pages (usually 4096B)
+dd if=/dev/zero of=test5b.txt bs=4096 count=1
+9) Change mmap.c:
+Photo1
+gcc mmap.c -o mmap
+10) ./mmap test5b.txt aaa
+SIGBUS received
+11) Change mmap.c:
+Photo2
+gcc mmap.c -o mmap
+12) cat test1k
+Outpput:
+test_text!
+./mmap test1k ABCDEF
+cat test1k
+Outpput:
+test_text!
+Meaning:
+MAP_PRIVATE disabled applying changes in mapped memory to file on disk
+13) Change mmap.c:
+Photo3
+gcc mmap.c -o mmap
+./mmap test1k ABCDEF
+Current string=test_text!
+Copied "ABCDEF" to shared memory
+Segmentation fault (core dumped)
+Meaning:
+mapped memory is no more available and still we try to access it, so we get segffault
+14) ./anon_mmap 
+Output:
+Child started, value = 1
+In parent, value = 2
+Change mmap.c:
+Photo1
+gcc anon_mmap.c -o anon_mmap
+Output:
+Child started, value = 1
+In parent, value = 1
+Meaning:
+After fork, child shares parent's mapped memory if MAP_SHARED
+Sharing was disabled after changing to MAP_PRIVATE, so value remains untouched
+15)
+writer.c:
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "semun.h"
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+    int semid, fd, bytes, transfers;
+    struct shmseg *shmp;
+
+    semid = semget(SEM_KEY, 2, IPC_CREAT | OBJ_PERMS);
+
+    if (semid == -1) {
+        fprintf(stderr, "semget error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (initSemAvailable(semid, WRITE_SEM) == -1) {
+        fprintf(stderr, "initSemAvailable error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (initSemInUse(semid, READ_SEM) == -1) {
+        fprintf(stderr, "initSemInUse error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    fd = open("shared.dat", O_RDWR | O_CREAT, 0666);
+
+    if (fd == -1) {
+        fprintf(stderr, "open error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (ftruncate(fd, sizeof(struct shmseg)) == -1) {
+        fprintf(stderr, "ftruncate error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    shmp = mmap(NULL, sizeof(struct shmseg),
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED, fd, 0);
+
+    if (shmp == MAP_FAILED) {
+        fprintf(stderr, "mmap error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+
+    for (transfers = 0, bytes = 0; ; transfers++, bytes += shmp->cnt) {
+
+        if (reserveSem(semid, WRITE_SEM) == -1) {
+            fprintf(stderr, "reserveSem error\n");
+            exit(EXIT_FAILURE);
+        }
+
+        shmp->cnt = read(STDIN_FILENO, shmp->buf, BUF_SIZE);
+
+        if (shmp->cnt == -1) {
+            fprintf(stderr, "read error\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (releaseSem(semid, READ_SEM) == -1) {
+            fprintf(stderr, "releaseSem error\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (shmp->cnt == 0) {
+            break;
+        }
+    }
+
+    if (reserveSem(semid, WRITE_SEM) == -1) {
+        fprintf(stderr, "reserveSem error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (semctl(semid, 0, IPC_RMID, 0) == -1) {
+        fprintf(stderr, "semctl error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (munmap(shmp, sizeof(struct shmseg)) == -1) {
+        fprintf(stderr, "munmap error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Sent %d bytes (%d transfers)\n", bytes, transfers);
+
+    exit(EXIT_SUCCESS);
+}
+
+reader.c:
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "shm.h"
+
+int main(int argc, char *argv[])
+{
+    int semid, fd, transfers, bytes;
+    struct shmseg *shmp;
+
+    semid = semget(SEM_KEY, 0, 0);
+
+    if (semid == -1) {
+        fprintf(stderr, "semget error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    fd = open("shared.dat", O_RDONLY);
+
+    if (fd == -1) {
+        fprintf(stderr, "open error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    shmp = mmap(NULL, sizeof(struct shmseg),
+                PROT_READ,
+                MAP_SHARED, fd, 0);
+
+    if (shmp == MAP_FAILED) {
+        fprintf(stderr, "mmap error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+
+    for (transfers = 0, bytes = 0; ; transfers++) {
+
+        if (reserveSem(semid, READ_SEM) == -1) {
+            fprintf(stderr, "reserveSem error\n");
+            exit(EXIT_FAILURE);
+        }
+        if (shmp->cnt == 0) {
+            break;
+        }
+
+        bytes += shmp->cnt;
+
+        if (write(STDOUT_FILENO, shmp->buf, shmp->cnt) != shmp->cnt) {
+            fprintf(stderr, "partial/failed write\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (releaseSem(semid, WRITE_SEM) == -1) {
+            fprintf(stderr, "releaseSem error\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (munmap(shmp, sizeof(struct shmseg)) == -1) {
+        fprintf(stderr, "munmap error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (releaseSem(semid, WRITE_SEM) == -1) {
+        fprintf(stderr, "releaseSem error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(stderr, "Received %d bytes (%d transfers)\n",
+            bytes, transfers);
+
+    exit(EXIT_SUCCESS);
+}
+
+
+16) 
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <string.h>
+
+int main(int argc, char *argv[])
+{
+    int src_fd, dest_fd;
+    struct stat sb;
+    char *src_addr, *dest_addr;
+
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s src dest\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    src_fd = open(argv[1], O_RDONLY);
+
+    if (src_fd == -1) {
+        perror("Source file");
+        exit(EXIT_FAILURE);
+    }
+
+    if (fstat(src_fd, &sb) == -1) {
+        perror("fstat");
+        exit(EXIT_FAILURE);
+    }
+
+    dest_fd = open(argv[2], O_RDWR | O_CREAT | O_TRUNC, 0666);
+
+    if (dest_fd == -1) {
+        perror("Destination file");
+        exit(EXIT_FAILURE);
+    }
+
+    if (ftruncate(dest_fd, sb.st_size) == -1) {
+        perror("ftruncate");
+        exit(EXIT_FAILURE);
+    }
+
+    src_addr = mmap(NULL, sb.st_size,
+                    PROT_READ, MAP_PRIVATE,
+                    src_fd, 0);
+
+    if (src_addr == MAP_FAILED) {
+        perror("mmap source");
+        exit(EXIT_FAILURE);
+    }
+
+    dest_addr = mmap(NULL, sb.st_size,
+                     PROT_READ | PROT_WRITE,
+                     MAP_SHARED,
+                     dest_fd, 0);
+
+    if (dest_addr == MAP_FAILED) {
+        perror("mmap destination");
+        exit(EXIT_FAILURE);
+    }
+
+    memcpy(dest_addr, src_addr, sb.st_size);
+
+    if (msync(dest_addr, sb.st_size, MS_SYNC) == -1) {
+        perror("msync");
+        exit(EXIT_FAILURE);
+    }
+
+    munmap(src_addr, sb.st_size);
+    munmap(dest_addr, sb.st_size);
+
+    close(src_fd);
+    close(dest_fd);
+
+    return 0;
+}
+
+echo "abc" > test5b.txt
+cat test5b.txt 
+Output:
+abc
+./mycp test5b.txt try
+cat try
+Output:
+abc
