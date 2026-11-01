@@ -1,0 +1,331 @@
+============================================================================
+             SYSTEM V MESSAGE QUEUES — CHEATSHEET
+                        EXAM QUESTIONS 1–18
+============================================================================
+
+MENTAL MODEL
+------------
+- Kernel-managed IPC mechanism.
+- Processes exchange messages through a queue maintained by the kernel.
+- Processes do NOT need to share an address space.
+- Sender and receiver do NOT need to run simultaneously.
+- Queue survives creator process termination.
+- Queue persists until IPC_RMID or system shutdown.
+
+
+HEADERS
+-------
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
+
+MESSAGE STRUCTURE
+-----------------
+struct message {
+    long type;          // MUST be first; MUST be > 0
+    char text[100];     // Payload
+};
+
+IMPORTANT:
+- First member MUST be long.
+- msgsz EXCLUDES the leading long type.
+- Do NOT send pointers expecting another process to dereference them.
+  Pointer addresses belong to the sender's virtual address space.
+
+Example:
+struct message msg = {1, "Hello"};
+
+
+============================================================================
+1. msgget() — CREATE / OBTAIN QUEUE
+============================================================================
+
+int msgget(key_t key, int msgflg);
+
+key     : IPC object lookup key.
+msgflg  : Creation flags + permission bits.
+
+RETURNS:
+- Success: nonnegative message queue ID (msqid).
+- Failure: -1, errno is set.
+
+FLAGS:
+IPC_CREAT   : Create queue if it does not exist.
+IPC_EXCL    : With IPC_CREAT, fail if queue already exists.
+IPC_PRIVATE : Always create a NEW queue; not "owner-only".
+
+PERMISSIONS:
+0600 : Owner read/write.
+0640 : Owner read/write, group read.
+0660 : Owner + group read/write.
+0666 : Everyone read/write (subject to umask).
+
+EXAMPLES:
+msgget(key, 0666);                         // Open existing
+msgget(key, IPC_CREAT | 0666);             // Open or create
+msgget(key, IPC_CREAT | IPC_EXCL | 0600);  // Create exclusively
+msgget(IPC_PRIVATE, 0600);                 // Always create new
+
+NOTE:
+- key != msqid.
+- key identifies/locates the queue.
+- msqid is the kernel-returned identifier used by other calls.
+- IPC_CREAT alone does NOT guarantee a new queue.
+
+
+============================================================================
+2. msgsnd() — SEND MESSAGE
+============================================================================
+
+int msgsnd(int msqid, const voidmsgp,
+           size_t msgsz, int msgflg);
+
+msqid  : Queue ID.
+msgp   : Pointer to message structure.
+msgsz  : Payload size, EXCLUDING long type.
+msgflg : Sending flags.
+
+RETURNS:
+- Success: 0.
+- Failure: -1, errno is set.
+
+EXAMPLE:
+struct message msg = {1, "Hello"};
+
+msgsnd(msid, &msg, strlen(msg.text) + 1, 0);
+
+SIZE:
+strlen(msg.text)     // Characters, excluding '\0'.
+strlen(msg.text) + 1 // Includes terminating '\0'.
+sizeof(msg.text)     // Entire array (100 bytes).
+
+FLAGS:
+0          : Blocking send; waits if queue is full.
+IPC_NOWAIT : Nonblocking; fails immediately if queue is full.
+
+ERROR:
+IPC_NOWAIT + full queue -> EAGAIN.
+
+
+============================================================================
+3. msgrcv() — RECEIVE MESSAGE
+============================================================================
+
+ssize_t msgrcv(int msqid, voidmsgp,
+               size_t msgsz, long msgtyp, int msgflg);
+
+msqid  : Queue ID.
+msgp   : Receiving message structure.
+msgsz  : MAXIMUM payload size, EXCLUDING long type.
+msgtyp : Message selection rule.
+msgflg : Receiving flags.
+
+RETURNS:
+- Success: number of payload bytes received.
+- Failure: -1, errno is set.
+
+MESSAGE SELECTION (msgtyp):
+ 0  : First message in queue, regardless of type.
+>0  : First message with EXACTLY this type.
+<0  : Message with LOWEST type <= abs(msgtyp).
+
+Example queue types: 3, 1, 2, 1
+
+msgrcv(..., 0, 0)  -> type 3 (first message).
+msgrcv(..., 2, 0)  -> type 2.
+msgrcv(..., -2, 0) -> type 1 (lowest eligible type).
+
+FLAGS:
+0           : Blocking receive; waits for matching message.
+IPC_NOWAIT  : Nonblocking; returns immediately if no match.
+MSG_NOERROR : Truncate oversized message instead of E2BIG.
+
+NONBLOCKING RECEIVE:
+msgrcv(msid, &msg, sizeof(msg.text), 1, IPC_NOWAIT);
+
+If no matching message:
+- Returns -1.
+- errno = ENOMSG.
+
+OVERSIZED MESSAGE:
+Without MSG_NOERROR:
+- Returns -1.
+- errno = E2BIG.
+- Message REMAINS in queue.
+
+With MSG_NOERROR:
+- Message is truncated to receiver's buffer size.
+- Excess bytes are discarded.
+- Message is REMOVED from queue.
+
+
+============================================================================
+4. msgctl() — CONTROL QUEUE
+============================================================================
+
+int msgctl(int msqid, int cmd, struct msqid_dsbuf);
+
+COMMANDS:
+
+IPC_STAT : Read queue metadata.
+IPC_SET  : Change permitted metadata.
+IPC_RMID : Remove queue.
+
+EXAMPLES:
+
+struct msqid_ds info;
+
+msgctl(msid, IPC_STAT, &info); // Read metadata.
+
+info.msg_perm.mode = 0600;
+msgctl(msid, IPC_SET, &info);  // Change permissions.
+
+msgctl(msid, IPC_RMID, NULL);  // Remove queue.
+
+
+struct msqid_ds IMPORTANT FIELDS:
+
+msg_perm       : Ownership and permissions.
+msg_stime      : Last successful send timestamp.
+msg_rtime      : Last successful receive timestamp.
+msg_ctime      : Last metadata change timestamp.
+msg_qnum       : Number of messages currently queued.
+msg_qbytes     : Maximum queue capacity in bytes.
+msg_lspid      : PID of last sender.
+msg_lrpid      : PID of last receiver.
+__msg_cbytes   : Current payload bytes (Linux-specific).
+
+IMPORTANT:
+- msg_qnum = NUMBER of messages, NOT bytes.
+- msg_qbytes = MAXIMUM queue capacity.
+- __msg_cbytes = CURRENT bytes stored (Linux-specific).
+- IPC_SET only changes selected fields; authorization/limits apply.
+
+
+============================================================================
+5. QUEUE CAPACITY / SYSTEM LIMITS
+============================================================================
+
+Linux parameters:
+
+/proc/sys/kernel/msgmax : Maximum size of ONE message.
+/proc/sys/kernel/msgmnb : Default maximum queue capacity.
+/proc/sys/kernel/msgmni : Maximum number of queues system-wide.
+
+Inspect:
+cat /proc/sys/kernel/msgmax
+cat /proc/sys/kernel/msgmnb
+cat /proc/sys/kernel/msgmni
+
+QUEUE FULL:
+msgsnd(..., 0)          -> Blocks until space is available.
+msgsnd(..., IPC_NOWAIT) -> -1, errno = EAGAIN.
+
+
+============================================================================
+6. ERROR CODES — errno
+============================================================================
+
+EEXIST : Queue already exists; IPC_CREAT | IPC_EXCL.
+ENOENT : Queue does not exist; msgget() without IPC_CREAT.
+EACCES : Insufficient permissions.
+EIDRM  : Queue removed while process was waiting/operating.
+E2BIG  : Message exceeds receive buffer without MSG_NOERROR.
+ENOMSG : No matching message; IPC_NOWAIT receive.
+EAGAIN : Queue full; IPC_NOWAIT send.
+EINVAL : Invalid queue ID or argument.
+ENOMEM : Insufficient memory.
+
+ERROR HANDLING:
+
+#include <errno.h>
+
+if (msgget(...) == -1) {
+    printf("Error number: %d\n", errno);
+    printf("Description: %s\n", strerror(errno));
+    perror("msgget");
+}
+
+errno          : Numeric error code.
+strerror(errno): Human-readable description.
+perror("label"): Prints label + error description.
+
+IMPORTANT:
+- Check errno ONLY after a failed call.
+- Successful calls do NOT necessarily reset errno.
+
+
+============================================================================
+7. QUEUE MANAGEMENT — SHELL COMMANDS
+============================================================================
+
+ipcs -q          : List System V message queues.
+ipcrm -q <msqid> : Remove queue by ID.
+
+Queue persists after creator exits.
+Explicit removal:
+msgctl(msid, IPC_RMID, NULL);
+
+IPC_RMID:
+- Removes queue.
+- Wakes blocked senders/receivers.
+- Blocked operations typically fail with EIDRM.
+
+
+============================================================================
+8. COMMON EXAM TRAPS
+============================================================================
+
+1. key != msqid.
+
+2. msgsz excludes long type in BOTH msgsnd() and msgrcv().
+
+3. msgtyp = -2 does NOT mean "second message".
+   It selects the lowest type <= 2.
+
+4. ENOMSG = no matching message (nonblocking receive).
+   EAGAIN  = queue full (nonblocking send).
+
+5. E2BIG = oversized message; message remains queued.
+   MSG_NOERROR = truncation; message is consumed.
+
+6. msg_qnum counts messages; msg_qbytes measures capacity in bytes.
+
+7. IPC_RMID removes the queue; it does NOT change permissions.
+
+8. IPC_CREAT alone may open an existing queue.
+   Use IPC_CREAT | IPC_EXCL to require a new queue.
+
+9. IPC_PRIVATE means "always create new", NOT "owner-only".
+
+10. System V queues are kernel objects; creator termination
+    does NOT automatically destroy them.
+
+
+============================================================================
+9. SYSTEM CALL QUICK REFERENCE
+============================================================================
+
+msgget(key, flags)
+    -> Create/open queue; returns msqid.
+
+msgsnd(msqid, &msg, payload_size, flags)
+    -> Send message; returns 0.
+
+msgrcv(msqid, &msg, max_payload, msgtyp, flags)
+    -> Receive message; returns payload byte count.
+
+msgctl(msqid, IPC_STAT, &info)
+    -> Read queue metadata.
+
+msgctl(msqid, IPC_SET, &info)
+    -> Change permitted metadata.
+
+msgctl(msqid, IPC_RMID, NULL)
+    -> Remove queue.
+
+============================================================================
