@@ -1,0 +1,632 @@
+
+/*
+ ******************************************************************************
+ *          OPERATING SYSTEMS — SHARED MEMORY & MEMORY MAPPING
+ *                       EXAM CHEATSHEET
+ ******************************************************************************
+ *
+ *
+ * ============================================================================
+ *  PART 1 — SYSTEM V SHARED MEMORY
+ * ============================================================================
+ *
+ *  CONCEPT:
+ *
+ *    - Kernel-managed shared memory segment.
+ *    - Multiple processes can attach the same segment.
+ *    - Processes may attach it at different virtual addresses.
+ *    - All attached processes access the same underlying memory.
+ *    - Changes made by one process are visible to others.
+ *    - Shared memory does NOT provide automatic synchronization.
+ *      Use semaphores or another synchronization mechanism.
+ *
+ *
+ *  REQUIRED HEADERS:
+ *
+ *    #include <sys/types.h>
+ *    #include <sys/ipc.h>
+ *    #include <sys/shm.h>
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  1. shmget() — CREATE OR OBTAIN A SHARED MEMORY SEGMENT
+ * --------------------------------------------------------------------------
+ *
+ *    int shmget(key_t key, size_t size, int shmflg);
+ *
+ *    ARGUMENTS:
+ *      key    - IPC key identifying the segment.
+ *      size   - requested segment size in bytes.
+ *      shmflg - creation flags and permission bits.
+ *
+ *    FLAGS:
+ *      IPC_CREAT  - create segment if it doesn't exist.
+ *      IPC_EXCL   - with IPC_CREAT, fail if segment already exists.
+ *      IPC_PRIVATE - always create a new segment.
+ *
+ *    EXAMPLE:
+ *      int shmid = shmget(1234, 4096, IPC_CREAT | 0600);
+ *
+ *    NEW SEGMENT:
+ *      int shmid = shmget(IPC_PRIVATE, 4096, 0600);
+ *
+ *    RETURN:
+ *      >= 0  - shared memory identifier (shmid).
+ *      -1    - error; inspect errno.
+ *
+ *    IMPORTANT:
+ *      - Existing segments are not necessarily resized.
+ *      - Requested size cannot exceed the existing segment's size.
+ *      - IPC_PRIVATE creates a new segment regardless of key.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  2. shmat() — ATTACH SEGMENT TO PROCESS ADDRESS SPACE
+ * --------------------------------------------------------------------------
+ *
+ *    void *shmat(int shmid, const void *shmaddr, int shmflg);
+ *
+ *    ARGUMENTS:
+ *      shmid   - shared memory identifier.
+ *      shmaddr - requested virtual address; NULL = kernel chooses.
+ *      shmflg  - attachment flags.
+ *
+ *    FLAG:
+ *      SHM_RDONLY - attach read-only.
+ *
+ *    EXAMPLE:
+ *      void *ptr = shmat(shmid, NULL, 0);
+ *
+ *    READ-ONLY:
+ *      void *ptr = shmat(shmid, NULL, SHM_RDONLY);
+ *
+ *    RETURN:
+ *      Success: attached memory address.
+ *      Failure: (void *) -1.
+ *
+ *    ERROR CHECK:
+ *      if (ptr == (void *) -1)
+ *          perror("shmat");
+ *
+ *    IMPORTANT:
+ *      - Failure is NOT indicated by NULL.
+ *      - Different processes may receive different virtual addresses.
+ *      - The returned pointer is the starting address of the segment.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  3. shmdt() — DETACH SEGMENT
+ * --------------------------------------------------------------------------
+ *
+ *    int shmdt(const void *shmaddr);
+ *
+ *    ARGUMENT:
+ *      shmaddr - exact address returned by shmat().
+ *
+ *    EXAMPLE:
+ *      shmdt(ptr);
+ *
+ *    RETURN:
+ *      0  - success.
+ *     -1  - error.
+ *
+ *    IMPORTANT:
+ *      - Detaches the segment from the calling process.
+ *      - Does NOT destroy the shared memory segment.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  4. shmctl() — CONTROL AND INSPECT SEGMENT
+ * --------------------------------------------------------------------------
+ *
+ *    int shmctl(int shmid, int cmd, struct shmid_ds *buf);
+ *
+ *    ARGUMENTS:
+ *      shmid - shared memory identifier.
+ *      cmd   - requested operation.
+ *      buf   - pointer to metadata structure; meaning depends on cmd.
+ *
+ *
+ *    struct shmid_ds:
+ *
+ *      shm_perm  - ownership and permissions.
+ *      shm_segsz - segment size in bytes.
+ *      shm_atime - time of last successful attachment.
+ *      shm_dtime - time of last successful detachment.
+ *      shm_ctime - time of last metadata change.
+ *      shm_cpid  - creator's PID.
+ *      shm_lpid  - PID of last attachment/detachment operation.
+ *      shm_nattch - current number of attachments.
+ *
+ *      NOTE: Exact structure fields can vary by implementation.
+ *
+ *
+ *    IPC_STAT — GET METADATA:
+ *
+ *      struct shmid_ds info;
+ *      shmctl(shmid, IPC_STAT, &info);
+ *
+ *      Copies kernel metadata INTO the supplied structure.
+ *
+ *      Example:
+ *        info.shm_segsz
+ *        info.shm_nattch
+ *        info.shm_cpid
+ *        info.shm_perm.mode
+ *
+ *
+ *    IPC_SET — MODIFY METADATA:
+ *
+ *      struct shmid_ds info;
+ *      shmctl(shmid, IPC_STAT, &info);
+ *
+ *      info.shm_perm.mode = 0640;
+ *
+ *      shmctl(shmid, IPC_SET, &info);
+ *
+ *      Copies selected fields FROM the supplied structure to kernel.
+ *
+ *      Modifiable fields include:
+ *        shm_perm.uid
+ *        shm_perm.gid
+ *        shm_perm.mode
+ *
+ *      Ownership changes require appropriate privileges.
+ *
+ *
+ *    IPC_RMID — MARK SEGMENT FOR REMOVAL:
+ *
+ *      shmctl(shmid, IPC_RMID, NULL);
+ *
+ *      - Marks segment for destruction.
+ *      - Actual destruction occurs after the last attachment disappears.
+ *      - Existing attachments can continue accessing it until detached.
+ *
+ *
+ *    OTHER COMMANDS:
+ *
+ *      SHM_LOCK   - lock segment into physical memory.
+ *      SHM_UNLOCK - unlock segment.
+ *
+ *      These are NOT synchronization mechanisms.
+ *
+ *    RETURN:
+ *      0  - success.
+ *     -1  - error.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  5. shm_perm — PERMISSIONS AND OWNERSHIP
+ * --------------------------------------------------------------------------
+ *
+ *    Nested inside struct shmid_ds.
+ *
+ *    Contains:
+ *      uid  - owner user ID.
+ *      gid  - owner group ID.
+ *      cuid - creator user ID.
+ *      cgid - creator group ID.
+ *      mode - permission bits.
+ *      key  - IPC key (implementation field naming may vary).
+ *
+ *    Example:
+ *      info.shm_perm.uid
+ *      info.shm_perm.gid
+ *      info.shm_perm.mode
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  6. SHARED MEMORY LIFECYCLE
+ * --------------------------------------------------------------------------
+ *
+ *      shmget()                 create/get segment
+ *          |
+ *      shmat()                  attach to process
+ *          |
+ *      read/write               access shared bytes
+ *          |
+ *      shmdt()                  detach from process
+ *          |
+ *      shmctl(IPC_RMID)         mark for removal
+ *
+ *      IPC_RMID can also be called while attachments still exist.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  7. INSPECTING SHARED MEMORY
+ * --------------------------------------------------------------------------
+ *
+ *    Shell commands:
+ *
+ *      ipcs -m              list shared memory segments.
+ *      ipcrm -m <shmid>     remove a segment.
+ *
+ *    Process memory mappings:
+ *
+ *      cat /proc/self/maps
+ *      cat /proc/<PID>/maps
+ *
+ *
+ * ============================================================================
+ *  PART 2 — mmap() MEMORY MAPPING
+ * ============================================================================
+ *
+ *  CONCEPT:
+ *
+ *    - Maps a file or anonymous memory into process virtual address space.
+ *    - Mapping is accessed through an ordinary pointer.
+ *    - File-backed pages are commonly loaded on demand.
+ *    - Kernel manages mapping and page faults.
+ *
+ *
+ *  REQUIRED HEADERS:
+ *
+ *    #include <sys/mman.h>
+ *    #include <sys/types.h>
+ *    #include <unistd.h>
+ *    #include <fcntl.h>
+ *    #include <sys/stat.h>
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  1. mmap() — CREATE A MEMORY MAPPING
+ * --------------------------------------------------------------------------
+ *
+ *    void *mmap(
+ *        void *addr,
+ *        size_t length,
+ *        int prot,
+ *        int flags,
+ *        int fd,
+ *        off_t offset
+ *    );
+ *
+ *    ARGUMENTS:
+ *
+ *      addr   - preferred starting virtual address.
+ *               NULL = kernel chooses address.
+ *
+ *      length - number of bytes to map.
+ *
+ *      prot   - memory protection.
+ *
+ *      flags  - mapping type and behavior.
+ *
+ *      fd     - file descriptor (for file-backed mapping).
+ *
+ *      offset - starting offset in file.
+ *               Must be a multiple of system page size.
+ *
+ *
+ *    PROTECTION FLAGS (prot):
+ *
+ *      PROT_READ  - reading permitted.
+ *      PROT_WRITE - writing permitted.
+ *      PROT_EXEC  - execution permitted.
+ *      PROT_NONE  - no access permitted.
+ *
+ *      Combine flags using bitwise OR:
+ *
+ *        PROT_READ | PROT_WRITE
+ *
+ *
+ *    MAPPING FLAGS (flags):
+ *
+ *      MAP_SHARED:
+ *        - Changes are shared with other MAP_SHARED mappings
+ *          of the same underlying object.
+ *        - File-backed modifications are propagated to the file.
+ *        - Synchronization is NOT automatic.
+ *
+ *      MAP_PRIVATE:
+ *        - Private copy-on-write mapping.
+ *        - Modifications are private to the process.
+ *        - Changes are NOT written back to the file.
+ *
+ *      MAP_ANONYMOUS:
+ *        - Anonymous mapping, not backed by a file.
+ *        - fd is -1; offset is 0.
+ *
+ *      MAP_FIXED:
+ *        - Request mapping at exactly addr.
+ *        - Can replace existing mappings; use with extreme care.
+ *
+ *
+ *    FILE-BACKED SHARED MAPPING:
+ *
+ *      int fd = open("data.txt", O_RDWR);
+ *
+ *      void *p = mmap(
+ *          NULL, 4096,
+ *          PROT_READ | PROT_WRITE,
+ *          MAP_SHARED,
+ *          fd, 0
+ *      );
+ *
+ *
+ *    ANONYMOUS SHARED MAPPING:
+ *
+ *      void *p = mmap(
+ *          NULL, 4096,
+ *          PROT_READ | PROT_WRITE,
+ *          MAP_SHARED | MAP_ANONYMOUS,
+ *          -1, 0
+ *      );
+ *
+ *
+ *    RETURN:
+ *      Success: mapped address.
+ *      Failure: MAP_FAILED.
+ *
+ *    ERROR CHECK:
+ *
+ *      void *p = mmap(...);
+ *
+ *      if (p == MAP_FAILED)
+ *          perror("mmap");
+ *
+ *      IMPORTANT:
+ *        MAP_FAILED is typically (void *) -1.
+ *        Do NOT check mmap() failure using p == NULL.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  2. MAP_SHARED VS MAP_PRIVATE
+ * --------------------------------------------------------------------------
+ *
+ *      MAP_SHARED:
+ *
+ *        - Mappings share modifications to the underlying object.
+ *        - File-backed modifications are propagated to the file.
+ *        - Other MAP_SHARED mappings can observe changes.
+ *
+ *      MAP_PRIVATE:
+ *
+ *        - Copy-on-write (COW).
+ *        - Initially may use the same underlying file pages.
+ *        - On modification, a private copy of the affected page is made.
+ *        - Other processes do not see the private modification.
+ *        - Underlying file is not modified by those writes.
+ *
+ *      IMPORTANT:
+ *        MAP_PRIVATE does NOT mean "modify privately and save later".
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  3. ANONYMOUS MAPPINGS
+ * --------------------------------------------------------------------------
+ *
+ *      MAP_ANONYMOUS | MAP_SHARED:
+ *
+ *        - No backing file.
+ *        - fd = -1.
+ *        - offset = 0.
+ *        - Can be shared between parent and child after fork().
+ *
+ *      MAP_ANONYMOUS | MAP_PRIVATE:
+ *
+ *        - Anonymous private memory.
+ *        - Copy-on-write behavior after fork().
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  4. munmap() — REMOVE A MAPPING
+ * --------------------------------------------------------------------------
+ *
+ *    int munmap(void *addr, size_t length);
+ *
+ *    ARGUMENTS:
+ *      addr   - starting address of mapping.
+ *      length - length to unmap.
+ *
+ *    EXAMPLE:
+ *      munmap(p, 4096);
+ *
+ *    RETURN:
+ *      0  - success.
+ *     -1  - error.
+ *
+ *    IMPORTANT:
+ *      - Removes mapping from process virtual address space.
+ *      - Does NOT delete the underlying file.
+ *      - Do not access the unmapped region afterward.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  5. msync() — SYNCHRONIZE MAPPED FILE CHANGES
+ * --------------------------------------------------------------------------
+ *
+ *    int msync(void *addr, size_t length, int flags);
+ *
+ *    FLAGS:
+ *      MS_SYNC  - synchronize and wait for completion.
+ *      MS_ASYNC - request asynchronous synchronization.
+ *
+ *    EXAMPLE:
+ *      msync(p, length, MS_SYNC);
+ *
+ *    IMPORTANT:
+ *      - Used to request synchronization of MAP_SHARED file mappings.
+ *      - MAP_SHARED determines whether changes propagate to the object.
+ *      - msync() requests synchronization of modifications.
+ *      - MAP_PRIVATE changes are not saved to the underlying file.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  6. PAGE SIZE AND FILE OFFSETS
+ * --------------------------------------------------------------------------
+ *
+ *    long page_size = sysconf(_SC_PAGESIZE);
+ *
+ *    - mmap() works with page-aligned file offsets.
+ *    - offset must be a multiple of page size.
+ *    - length need not be a multiple of page size.
+ *    - Actual mapping occupies page-sized memory regions.
+ *
+ *    For a file mapping:
+ *      fd = open("file", O_RDWR);
+ *      fstat(fd, &st);
+ *      length = st.st_size;
+ *
+ *    IMPORTANT:
+ *      - A zero-length mapping is invalid.
+ *      - Accessing a file-backed mapped page beyond EOF can cause SIGBUS.
+ *      - File descriptor can be closed after successful mmap().
+ *        Mapping remains valid.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  7. fork() AND MEMORY MAPPINGS
+ * --------------------------------------------------------------------------
+ *
+ *    After fork(), the child inherits the parent's mappings.
+ *
+ *      MAP_SHARED:
+ *        - Parent and child access the same shared mapping.
+ *        - Changes made by one can be observed by the other.
+ *
+ *      MAP_PRIVATE:
+ *        - Private copy-on-write semantics.
+ *        - Modifications are not visible to the other process.
+ *
+ *    EXAMPLE:
+ *
+ *      int *p = mmap(
+ *          NULL, sizeof(int),
+ *          PROT_READ | PROT_WRITE,
+ *          MAP_SHARED | MAP_ANONYMOUS,
+ *          -1, 0
+ *      );
+ *
+ *      *p = 10;
+ *
+ *      pid_t pid = fork();
+ *
+ *      if (pid == 0) {
+ *          *p = 50;
+ *      } else {
+ *          wait(NULL);
+ *          printf("%d\n", *p);  // 50
+ *      }
+ *
+ *      With MAP_PRIVATE, parent prints 10.
+ *
+ *      NOTE:
+ *        wait() ensures the child has completed before parent reads.
+ *        It is not a general replacement for synchronization.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  8. SIGSEGV VS SIGBUS
+ * --------------------------------------------------------------------------
+ *
+ *      SIGSEGV:
+ *        - Invalid memory access.
+ *        - Access to unmapped memory.
+ *        - Writing to read-only mapping.
+ *        - Accessing PROT_NONE mapping.
+ *
+ *      SIGBUS:
+ *        - Invalid access to a mapped object.
+ *        - Classic example: accessing a file-backed mapped page
+ *          beyond the current end of the file.
+ *
+ *      Both signals have fatal default actions.
+ *
+ *
+ * --------------------------------------------------------------------------
+ *  9. COMMON mmap() ERRORS
+ * --------------------------------------------------------------------------
+ *
+ *      EACCES   - insufficient file access permissions.
+ *      EBADF    - invalid file descriptor or incompatible access mode.
+ *      EINVAL   - invalid arguments, flags, or unaligned offset.
+ *      ENOMEM   - insufficient memory/address space.
+ *      ENODEV   - device/filesystem does not support mapping.
+ *      EOVERFLOW - length/offset exceeds supported limits.
+ *
+ *
+ * ============================================================================
+ *  PART 3 — SYSTEM V SHARED MEMORY VS mmap()
+ * ============================================================================
+ *
+ *      SYSTEM V SHARED MEMORY:
+ *
+ *        shmget()  -> create/get segment
+ *        shmat()   -> attach
+ *        shmdt()   -> detach
+ *        shmctl()  -> inspect/control/remove
+ *
+ *        - Kernel-managed IPC object.
+ *        - Identified by shmid.
+ *        - Uses IPC keys and permissions.
+ *        - Segment can be attached by unrelated processes.
+ *
+ *
+ *      mmap():
+ *
+ *        mmap()   -> create mapping
+ *        msync()  -> synchronize shared file changes
+ *        munmap() -> remove mapping
+ *
+ *        - Maps files or anonymous memory into address space.
+ *        - Uses virtual memory mapping mechanisms.
+ *        - Supports shared and private mappings.
+ *        - Can be used for inter-process communication.
+ *
+ *
+ *      BOTH:
+ *
+ *        - Can provide memory accessible to multiple processes.
+ *        - Use virtual memory.
+ *        - Require synchronization when concurrent access needs ordering
+ *          or protection against data races.
+ *
+ *
+ * ============================================================================
+ *  PART 4 — IMPORTANT DISTINCTIONS TO MEMORIZE
+ * ============================================================================
+ *
+ *      shmat() failure:  (void *) -1
+ *      mmap() failure:   MAP_FAILED
+ *
+ *      NULL:
+ *        - Null pointer.
+ *        - Not the failure value for shmat() or mmap().
+ *
+ *      shmdt():
+ *        - Detaches a System V shared memory segment.
+ *
+ *      IPC_RMID:
+ *        - Marks a System V segment for deletion.
+ *
+ *      munmap():
+ *        - Removes a virtual memory mapping.
+ *
+ *      MAP_SHARED:
+ *        - Shares modifications to the underlying object.
+ *
+ *      MAP_PRIVATE:
+ *        - Copy-on-write; modifications remain private.
+ *
+ *      msync():
+ *        - Requests synchronization of shared file mapping changes.
+ *
+ *      SIGSEGV:
+ *        - Invalid/protected memory access.
+ *
+ *      SIGBUS:
+ *        - Invalid access to a mapped object, e.g. beyond file EOF.
+ *
+ *      shm_nattch:
+ *        - Number of current System V shared-memory attachments.
+ *
+ *      shm_segsz:
+ *        - System V segment size in bytes.
+ *
+ *
+ * ============================================================================
+ *  END OF CHEATSHEET
+ * ============================================================================
+ */
+

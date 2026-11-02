@@ -1,0 +1,524 @@
+
+/*
+ * ============================================================================
+ *                  SYSTEM V SEMAPHORES — CHEATSHEET
+ *                         EXAM QUESTIONS 19–37
+ * ============================================================================
+ *
+ * MENTAL MODEL
+ * ------------
+ * - Kernel-managed synchronization mechanism.
+ * - Used to coordinate processes and control access to shared resources.
+ * - A semaphore is an integer counter maintained by the kernel.
+ * - System V semaphores are organized into SETS.
+ * - One set can contain one or multiple semaphores.
+ * - Each semaphore has an index starting from 0.
+ * - semid identifies the ENTIRE set, not an individual semaphore.
+ *
+ * SEMAPHORE VALUE:
+ *   0  -> No available resources / unavailable lock.
+ *   1  -> One available resource / free binary lock.
+ *   N  -> N available resource instances.
+ *
+ * IMPORTANT:
+ * - semop() operations are atomic.
+ * - Processes can block while waiting for an operation.
+ * - Semaphores are kernel objects; they persist until IPC_RMID
+ *   or system shutdown.
+ *
+ *
+ * HEADERS
+ * -------
+ * #include <sys/types.h>
+ * #include <sys/ipc.h>
+ * #include <sys/sem.h>
+ * #include <sys/wait.h>
+ * #include <unistd.h>
+ * #include <errno.h>
+ * #include <stdio.h>
+ * #include <stdlib.h>
+ *
+ *
+ * ============================================================================
+ * 1. semget() — CREATE / OBTAIN SEMAPHORE SET
+ * ============================================================================
+ *
+ * int semget(key_t key, int nsems, int semflg);
+ *
+ * key    : Identifies the semaphore set.
+ * nsems  : Number of semaphores in the set.
+ * semflg : Creation flags + permission bits.
+ *
+ * RETURNS:
+ * - Success: semaphore set ID (semid).
+ * - Failure: -1, errno is set.
+ *
+ * EXAMPLES:
+ *
+ * semget(key, 1, IPC_CREAT | 0666);
+ *     // Create or obtain a set containing 1 semaphore.
+ *
+ * semget(key, 4, IPC_CREAT | 0666);
+ *     // Create or obtain a set containing 4 semaphores.
+ *
+ * semget(key, 1, IPC_CREAT | IPC_EXCL | 0600);
+ *     // Create a NEW set; fail if key already exists.
+ *
+ * semget(IPC_PRIVATE, 1, 0600);
+ *     // Always create a new set.
+ *
+ * FLAGS:
+ * IPC_CREAT   : Create set if it does not exist.
+ * IPC_EXCL    : With IPC_CREAT, fail if set already exists.
+ * IPC_PRIVATE : Always create a new set; NOT owner-only.
+ *
+ * PERMISSIONS:
+ * 0600 : Owner read/write.
+ * 0640 : Owner read/write, group read.
+ * 0660 : Owner + group read/write.
+ * 0666 : Everyone read/write (subject to umask).
+ *
+ * IMPORTANT:
+ * - key != semid.
+ * - nsems specifies the number of semaphores.
+ * - If set already exists, nsems cannot exceed its existing size.
+ * - semget() does NOT initialize semaphore values.
+ *
+ *
+ * ============================================================================
+ * 2. semctl() — CONTROL / INITIALIZE / INSPECT SEMAPHORES
+ * ============================================================================
+ *
+ * int semctl(int semid, int semnum, int cmd, ...);
+ *
+ * semid  : Semaphore set ID.
+ * semnum : Semaphore index (starts at 0).
+ * cmd    : Requested operation.
+ * ...    : Optional command-specific argument.
+ *
+ * RETURNS:
+ * - Depends on command.
+ * - Most successful commands return 0.
+ * - GETVAL / GETPID / GETNCNT / GETZCNT return an integer value.
+ * - Failure: -1, errno is set.
+ *
+ *
+ * UNION SEMUN:
+ * -----------
+ * Used for commands that require an argument.
+ * On Linux, commonly defined by the programmer:
+ *
+ * union semun {
+ *     int val;
+ *     struct semid_ds *buf;
+ *     unsigned short *array;
+ * };
+ *
+ * IMPORTANT:
+ * - union semun is not necessarily provided by <sys/sem.h>.
+ * - Define it yourself when required by the environment.
+ *
+ *
+ * ============================================================================
+ * 3. INITIALIZATION — SETVAL / SETALL
+ * ============================================================================
+ *
+ * SETVAL:
+ * Set the value of ONE semaphore.
+ *
+ * union semun arg;
+ * arg.val = 1;
+ *
+ * semctl(semid, 0, SETVAL, arg);
+ *
+ *
+ * SETALL:
+ * Set values of ALL semaphores in the set.
+ *
+ * unsigned short values[4] = {1, 0, 5, 2};
+ *
+ * union semun arg;
+ * arg.array = values;
+ *
+ * semctl(semid, 0, SETALL, arg);
+ *
+ * RESULT:
+ *   Semaphore 0 = 1
+ *   Semaphore 1 = 0
+ *   Semaphore 2 = 5
+ *   Semaphore 3 = 2
+ *
+ * IMPORTANT:
+ * - SETVAL initializes one semaphore.
+ * - SETALL initializes the entire set.
+ * - SETALL requires an array of unsigned short.
+ * - semnum is ignored for SETALL.
+ * - semget() does not initialize values.
+ * - Do not blindly reinitialize an existing set that may be in use.
+ *
+ *
+ * ============================================================================
+ * 4. semop() — PERFORM SEMAPHORE OPERATIONS
+ * ============================================================================
+ *
+ * int semop(int semid, struct sembuf *sops, size_t nsops);
+ *
+ * semid : Semaphore set ID.
+ * sops  : Array of semaphore operations.
+ * nsops : Number of operations in the array.
+ *
+ * RETURNS:
+ * - Success: 0.
+ * - Failure: -1, errno is set.
+ *
+ * OPERATION STRUCTURE:
+ *
+ * struct sembuf {
+ *     unsigned short sem_num; // Semaphore index
+ *     short          sem_op;  // Operation
+ *     short          sem_flg; // Flags
+ * };
+ *
+ *
+ * SEM_OP:
+ * -------
+ *
+ * sem_op > 0:
+ *     Increment semaphore by sem_op.
+ *     Usually used to SIGNAL / RELEASE.
+ *     Does not block due to semaphore value.
+ *
+ * sem_op < 0:
+ *     Decrement semaphore by abs(sem_op).
+ *     Usually used to WAIT / ACQUIRE.
+ *     Blocks if the resulting value would be negative.
+ *
+ * sem_op == 0:
+ *     Wait until semaphore value becomes ZERO.
+ *     Does NOT modify the value.
+ *
+ *
+ * EXAMPLES:
+ *
+ * // Decrement semaphore 0 by 1.
+ * struct sembuf op = {0, -1, 0};
+ * semop(semid, &op, 1);
+ *
+ * // Increment semaphore 0 by 1.
+ * struct sembuf op = {0, +1, 0};
+ * semop(semid, &op, 1);
+ *
+ * // Wait until semaphore 0 becomes zero.
+ * struct sembuf op = {0, 0, 0};
+ * semop(semid, &op, 1);
+ *
+ *
+ * EXAMPLE VALUE TRANSITIONS:
+ *
+ * Initial value = 1
+ *
+ * sem_op = -1  -> 0
+ * sem_op = +1  -> 1
+ * sem_op = -1  -> 0
+ * sem_op =  0  -> waits until zero; value remains 0.
+ *
+ *
+ * ============================================================================
+ * 5. semop() FLAGS — IPC_NOWAIT / SEM_UNDO
+ * ============================================================================
+ *
+ * IPC_NOWAIT:
+ * - Do not block if operation cannot proceed.
+ * - semop() returns -1.
+ * - errno = EAGAIN.
+ *
+ * Example:
+ * struct sembuf op = {0, -1, IPC_NOWAIT};
+ * semop(semid, &op, 1);
+ *
+ * If semaphore value is 0:
+ *     Operation fails immediately with EAGAIN.
+ *
+ *
+ * SEM_UNDO:
+ * - Kernel tracks the process's outstanding semaphore adjustment.
+ * - When the process terminates, kernel applies the undo adjustment.
+ * - Helps prevent a semaphore from remaining locked after process crash.
+ *
+ * Example:
+ * struct sembuf op = {0, -1, SEM_UNDO};
+ * semop(semid, &op, 1);
+ *
+ * If process terminates before undoing its operation:
+ *     Kernel applies the corresponding adjustment.
+ *
+ * IMPORTANT:
+ * - SEM_UNDO does NOT immediately restore the semaphore.
+ * - Adjustment is applied when the process terminates.
+ * - Use SEM_UNDO consistently for acquisition and release.
+ * - Undo adjustments are maintained per process and semaphore.
+ *
+ *
+ * ============================================================================
+ * 6. MULTIPLE OPERATIONS — ATOMICITY
+ * ============================================================================
+ *
+ * semop() accepts an ARRAY of operations.
+ *
+ * struct sembuf ops[2] = {
+ *     {0, -1, 0},  // Decrement semaphore 0.
+ *     {1, +1, 0}   // Increment semaphore 1.
+ * };
+ *
+ * semop(semid, ops, 2);
+ *
+ * IMPORTANT:
+ * - Both operations are performed atomically as a group.
+ * - Either the entire operation succeeds, or none is applied.
+ * - If one operation cannot proceed, the process waits.
+ *
+ *
+ * ============================================================================
+ * 7. INSPECTING SEMAPHORES — GET COMMANDS
+ * ============================================================================
+ *
+ * GETVAL:
+ * Get current value of ONE semaphore.
+ *
+ * int value = semctl(semid, 0, GETVAL);
+ *
+ *
+ * GETALL:
+ * Get values of ALL semaphores in the set.
+ *
+ * unsigned short values[4];
+ *
+ * union semun arg;
+ * arg.array = values;
+ *
+ * semctl(semid, 0, GETALL, arg);
+ *
+ *
+ * GETPID:
+ * Get PID of the process that last performed a successful
+ * semaphore operation on the selected semaphore.
+ *
+ * int pid = semctl(semid, 0, GETPID);
+ *
+ *
+ * GETNCNT:
+ * Get number of processes waiting for the semaphore value
+ * to increase enough to satisfy a negative operation.
+ *
+ * int count = semctl(semid, 0, GETNCNT);
+ *
+ *
+ * GETZCNT:
+ * Get number of processes waiting for semaphore value to become zero.
+ *
+ * int count = semctl(semid, 0, GETZCNT);
+ *
+ *
+ * QUICK TABLE:
+ *
+ * GETVAL  : Current value of one semaphore.
+ * GETALL  : Values of all semaphores.
+ * GETPID  : PID of last successful operation.
+ * GETNCNT : Number of negative-operation waiters.
+ * GETZCNT : Number of zero-wait operation waiters.
+ *
+ *
+ * ============================================================================
+ * 8. IPC_STAT / IPC_SET — SEMAPHORE METADATA
+ * ============================================================================
+ *
+ * struct semid_ds info;
+ *
+ * union semun arg;
+ * arg.buf = &info;
+ *
+ * semctl(semid, 0, IPC_STAT, arg);
+ *
+ *
+ * struct semid_ds IMPORTANT FIELDS:
+ *
+ * sem_perm  : Ownership and permissions.
+ * sem_nsems : Number of semaphores in the set.
+ * sem_otime : Time of last successful semop().
+ * sem_ctime : Time of last metadata change.
+ *
+ *
+ * IPC_STAT:
+ *     Read semaphore set metadata.
+ *
+ * IPC_SET:
+ *     Change permitted ownership/permission metadata.
+ *
+ * IPC_RMID:
+ *     Remove entire semaphore set.
+ *
+ * REMOVAL:
+ *
+ * semctl(semid, 0, IPC_RMID);
+ *
+ * IMPORTANT:
+ * - IPC_STAT concerns the whole set.
+ * - GETVAL concerns one semaphore.
+ * - GETALL concerns all semaphore values.
+ * - IPC_RMID removes the entire set, not just one semaphore.
+ *
+ * ============================================================================
+ * 10. SEMAPHORE SET WITH MULTIPLE SEMAPHORES
+ * ============================================================================
+ *
+ * Example: Create a set with 4 semaphores.
+ *
+ * int semid = semget(KEY, 4, IPC_CREAT | 0600);
+ *
+ * Initialize:
+ *
+ * unsigned short values[4] = {1, 0, 5, 2};
+ * union semun arg;
+ * arg.array = values;
+ * semctl(semid, 0, SETALL, arg);
+ *
+ * Operate on semaphore index 2:
+ *
+ * struct sembuf op = {2, -1, 0};
+ * semop(semid, &op, 1);
+ *
+ * IMPORTANT:
+ * - semid identifies the set.
+ * - sem_num selects a semaphore inside the set.
+ * - semnum in semctl() also selects a semaphore for commands
+ *   that operate on one semaphore.
+ *
+ *
+ * ============================================================================
+ * 11. ERRORS — errno
+ * ============================================================================
+ *
+ * EAGAIN : Operation cannot proceed with IPC_NOWAIT.
+ * EACCES : Insufficient permissions.
+ * EIDRM  : Semaphore set removed while process was waiting.
+ * EINTR  : Operation interrupted by a signal.
+ * EINVAL : Invalid semaphore ID or argument.
+ * ERANGE : Requested semaphore value exceeds allowed range.
+ * ENOMEM : Insufficient memory.
+ *
+ * ERROR HANDLING:
+ *
+ * if (semop(semid, &op, 1) == -1) {
+ *     perror("semop");
+ * }
+ *
+ * #include <errno.h>
+ *
+ * errno          : Numeric error code.
+ * strerror(errno): Human-readable description.
+ * perror("label"): Prints label + error description.
+ *
+ * IMPORTANT:
+ * - Check errno only after a failed call.
+ * - IPC_NOWAIT operation that cannot proceed -> EAGAIN.
+ * - Blocked operation interrupted by a signal -> EINTR.
+ * - Removed set while waiting -> EIDRM.
+ *
+ *
+ * ============================================================================
+ * 12. SHELL COMMANDS
+ * ============================================================================
+ *
+ * ipcs -s          : List System V semaphore sets.
+ * ipcrm -s <semid> : Remove semaphore set by ID.
+ *
+ *
+ * ============================================================================
+ * 13. COMMON EXAM TRAPS
+ * ============================================================================
+ *
+ * 1. semget() creates/obtains a SET, not an individual semaphore.
+ *
+ * 2. semid identifies the set; sem_num identifies an element inside it.
+ *
+ * 3. Semaphore indexes start at 0.
+ *
+ * 4. nsems specifies the number of semaphores in the set.
+ *
+ * 5. semget() does NOT initialize semaphore values.
+ *
+ * 6. SETVAL initializes ONE semaphore.
+ *    SETALL initializes ALL semaphores.
+ *
+ * 7. sem_op = -1 means decrement; blocks if insufficient value.
+ *
+ * 8. sem_op = +1 means increment.
+ *
+ * 9. sem_op = 0 means WAIT UNTIL ZERO.
+ *    It does NOT set the value to zero.
+ *
+ * 10. IPC_NOWAIT prevents blocking; failure gives EAGAIN.
+ *
+ * 11. SEM_UNDO does NOT restore the value immediately.
+ *     Kernel applies the adjustment when the process terminates.
+ *
+ * 12. GETVAL returns one value directly.
+ *     GETALL writes all values into an array.
+ *
+ * 13. GETNCNT counts negative-operation waiters.
+ *     GETZCNT counts zero-wait operation waiters.
+ *
+ * 14. IPC_STAT retrieves metadata for the whole set.
+ *
+ * 15. IPC_RMID removes the ENTIRE set.
+ *
+ * 16. Binary semaphore: 1 = free, 0 = locked.
+ *
+ * 17. System V semaphores do not enforce lock ownership.
+ *
+ * 18. Multiple semop() operations in one call are atomic as a group.
+ *
+ *
+ * ============================================================================
+ * 14. SYSTEM CALL QUICK REFERENCE
+ * ============================================================================
+ *
+ * semget(key, nsems, flags)
+ *     -> Create/open semaphore set; returns semid.
+ *
+ * semctl(semid, n, SETVAL, arg)
+ *     -> Set one semaphore value.
+ *
+ * semctl(semid, 0, SETALL, arg)
+ *     -> Set all semaphore values.
+ *
+ * semop(semid, &op, 1)
+ *     -> Perform semaphore operation.
+ *
+ * semctl(semid, n, GETVAL)
+ *     -> Get one semaphore value.
+ *
+ * semctl(semid, 0, GETALL, arg)
+ *     -> Get all semaphore values.
+ *
+ * semctl(semid, n, GETPID)
+ *     -> Get PID of last successful operation.
+ *
+ * semctl(semid, n, GETNCNT)
+ *     -> Get number of negative-operation waiters.
+ *
+ * semctl(semid, n, GETZCNT)
+ *     -> Get number of zero-wait operation waiters.
+ *
+ * semctl(semid, 0, IPC_STAT, arg)
+ *     -> Read set metadata.
+ *
+ * semctl(semid, 0, IPC_SET, arg)
+ *     -> Modify permitted metadata.
+ *
+ * semctl(semid, 0, IPC_RMID)
+ *     -> Remove entire semaphore set.
+ *
+ * ============================================================================
+ */
+

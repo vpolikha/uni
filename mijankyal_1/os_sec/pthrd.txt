@@ -1,0 +1,729 @@
+/*
+ * ============================================================
+ *                     POSIX THREADS (pthreads)
+ * ============================================================
+ *
+ * COMPILE:
+ *   gcc main.c -o main -pthread
+ *
+ * HEADER:
+ *   #include <pthread.h>
+ *
+ *
+ * 1. PROCESS vs THREAD
+ * ------------------------------------------------------------
+ *
+ * PROCESS:
+ *   - Own virtual address space.
+ *   - Own process-level resources.
+ *
+ * THREAD:
+ *   - Execution unit inside a process.
+ *   - Threads of one process share:
+ *       * Global variables
+ *       * Heap
+ *       * Address space
+ *       * Open file descriptors
+ *       * Other process resources
+ *
+ *   - Each thread has its own:
+ *       * Stack
+ *       * Registers
+ *       * Program counter
+ *       * Thread ID
+ *       * Thread-local storage (TLS)
+ *
+ *   Threads run concurrently. Execution order is NOT guaranteed.
+ *
+ *
+ * 2. CREATING A THREAD — pthread_create()
+ * ------------------------------------------------------------
+ *
+ *   int pthread_create(
+ *       pthread_t *thread,
+ *       const pthread_attr_t *attr,
+ *       void *(*start_routine)(void *),
+ *       void *arg
+ *   );
+ *
+ *   PARAMETERS:
+ *     thread        -> receives the new thread's ID.
+ *     attr          -> thread attributes; NULL means defaults.
+ *     start_routine -> function executed by the new thread.
+ *     arg           -> argument passed to that function.
+ *
+ *   THREAD FUNCTION:
+ *
+ *     void *worker(void *arg);
+ *
+ *   RETURNS:
+ *     0       -> success
+ *     nonzero -> error number directly (NOT -1).
+ *
+ *   Example:
+ *
+ *     pthread_t tid;
+ *     pthread_create(&tid, NULL, worker, NULL);
+ *
+ *
+ * 3. PASSING ARGUMENTS TO THREADS
+ * ------------------------------------------------------------
+ *
+ *   pthread_create() passes one void * argument to the
+ *   thread function.
+ *
+ *   Cast it back to the required type inside the function.
+ *
+ *     void *worker(void *arg)
+ *     {
+ *         int value = *(int *)arg;
+ *         return NULL;
+ *     }
+ *
+ *   IMPORTANT: The pointed-to object must remain valid while
+ *   the thread uses it.
+ *
+ *   WRONG:
+ *
+ *     for (int i = 0; i < 4; i++)
+ *         pthread_create(&t[i], NULL, worker, &i);
+ *
+ *   All threads receive the address of the SAME variable.
+ *
+ *   BETTER:
+ *
+ *     int args[4] = {1, 2, 3, 4};
+ *
+ *     for (int i = 0; i < 4; i++)
+ *         pthread_create(&t[i], NULL, worker, &args[i]);
+ *
+ *   Keep args alive until threads finish.
+ *
+ *
+ * 4. WAITING FOR A THREAD — pthread_join()
+ * ------------------------------------------------------------
+ *
+ *   int pthread_join(pthread_t thread, void **retval);
+ *
+ *   - Waits until the specified joinable thread terminates.
+ *   - Can collect the thread's return value.
+ *
+ *   retval:
+ *     NULL    -> ignore return value.
+ *     &result -> receive returned void * pointer.
+ *
+ *   Example:
+ *
+ *     void *result;
+ *     pthread_join(tid, &result);
+ *
+ *   A thread can return a value using:
+ *
+ *     return some_pointer;
+ *     pthread_exit(some_pointer);
+ *
+ *   Do NOT return the address of a local stack variable:
+ *   that variable ceases to exist when the function returns.
+ *
+ *   Use dynamically allocated memory or caller-owned storage
+ *   if the result must outlive the thread function.
+ *
+ *
+ * 5. THREAD TERMINATION
+ * ------------------------------------------------------------
+ *
+ *   A thread can terminate by:
+ *
+ *     1. Returning from its start routine.
+ *     2. Calling pthread_exit(void *retval).
+ *     3. Being cancelled with pthread_cancel().
+ *
+ *   pthread_exit():
+ *     - Terminates ONLY the calling thread.
+ *     - Supplies a return value available through pthread_join().
+ *     - Executes pending cleanup handlers.
+ *     - Executes thread-specific data destructors.
+ *
+ *   IMPORTANT:
+ *
+ *     return from main() or exit():
+ *       -> terminates the ENTIRE PROCESS, including all threads.
+ *
+ *     pthread_exit() in the main thread:
+ *       -> terminates only the main thread;
+ *          other threads may continue running.
+ *
+ *   If the last thread terminates, the process terminates.
+ *
+ *
+ * 6. THREAD IDENTIFICATION
+ * ------------------------------------------------------------
+ *
+ *   pthread_t pthread_self(void);
+ *
+ *     Returns the calling thread's ID.
+ *
+ *   int pthread_equal(pthread_t t1, pthread_t t2);
+ *
+ *     Compares two thread IDs.
+ *     Returns nonzero if equal, zero otherwise.
+ *
+ *   Do NOT assume pthread_t is an integer.
+ *   Do NOT rely on comparing pthread_t values with ==.
+ *
+ *
+ * 7. RACE CONDITIONS
+ * ------------------------------------------------------------
+ *
+ *   A race condition occurs when the result depends on the
+ *   unpredictable timing/interleaving of concurrent threads.
+ *
+ *     int counter = 0;
+ *
+ *     // Executed concurrently:
+ *     counter++;
+ *
+ *   counter++ is NOT necessarily one atomic operation.
+ *
+ *   Conceptually:
+ *     1. Read counter.
+ *     2. Add 1.
+ *     3. Write the result.
+ *
+ *   Two threads can read the same old value and overwrite
+ *   each other's updates (lost update).
+ *
+ *   In C, conflicting concurrent accesses to the same
+ *   non-atomic object, with at least one write and no
+ *   synchronization, constitute a DATA RACE.
+ *
+ *   A data race causes UNDEFINED BEHAVIOR.
+ *
+ *
+ * 8. MUTEXES — MUTUAL EXCLUSION
+ * ------------------------------------------------------------
+ *
+ *   A mutex protects a critical section so that only one
+ *   thread at a time can hold the lock.
+ *
+ *   TYPE:
+ *
+ *     pthread_mutex_t mutex;
+ *
+ *   STATIC INITIALIZATION:
+ *
+ *     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+ *
+ *   DYNAMIC INITIALIZATION:
+ *
+ *     pthread_mutex_init(&mutex, NULL);
+ *
+ *   LOCK:
+ *
+ *     pthread_mutex_lock(&mutex);
+ *
+ *     // CRITICAL SECTION
+ *
+ *     pthread_mutex_unlock(&mutex);
+ *
+ *   DESTROY:
+ *
+ *     pthread_mutex_destroy(&mutex);
+ *
+ *   IMPORTANT:
+ *     - All threads accessing shared data must follow the
+ *       same locking discipline.
+ *     - Protect the entire operation.
+ *     - Unlock after the critical section.
+ *     - Do not destroy a mutex while it is locked or in use.
+ *
+ *
+ * 9. NON-BLOCKING LOCK — pthread_mutex_trylock()
+ * ------------------------------------------------------------
+ *
+ *   int pthread_mutex_trylock(pthread_mutex_t *mutex);
+ *
+ *   - Attempts to lock the mutex without waiting.
+ *   - Returns immediately if another thread holds the lock.
+ *
+ *   RETURNS:
+ *     0       -> lock acquired
+ *     EBUSY   -> mutex is already locked (normal mutex)
+ *     other   -> error number
+ *
+ *   Difference:
+ *     pthread_mutex_lock()     -> waits if unavailable.
+ *     pthread_mutex_trylock()  -> does not wait.
+ *
+ *
+ * 10. DEADLOCK
+ * ------------------------------------------------------------
+ *
+ *   Deadlock: two or more threads wait indefinitely for
+ *   resources held by one another.
+ *
+ *   Example:
+ *
+ *     Thread A: lock(mutex1), then lock(mutex2)
+ *     Thread B: lock(mutex2), then lock(mutex1)
+ *
+ *   Possible situation:
+ *     A holds mutex1 and waits for mutex2.
+ *     B holds mutex2 and waits for mutex1.
+ *
+ *   Neither can continue.
+ *
+ *   Common prevention:
+ *     - Establish a global lock ordering.
+ *     - Always acquire multiple mutexes in the same order.
+ *     - Avoid unnecessary nested locking.
+ *
+ *
+ * 11. THREAD ATTRIBUTES — pthread_attr_t
+ * ------------------------------------------------------------
+ *
+ *   pthread_attr_t attr;
+ *
+ *   INITIALIZE:
+ *     pthread_attr_init(&attr);
+ *
+ *   DESTROY:
+ *     pthread_attr_destroy(&attr);
+ *
+ *   Passing NULL to pthread_create() uses default attributes.
+ *
+ *   DEFAULT THREAD STATE:
+ *     JOINABLE
+ *
+ *   JOINABLE:
+ *     - Can be waited for using pthread_join().
+ *     - Termination status/resources can be collected.
+ *
+ *   DETACHED:
+ *     - Cannot be joined.
+ *     - Thread resources are automatically released when
+ *       the thread terminates.
+ *
+ *   CREATE A DETACHED THREAD:
+ *
+ *     pthread_attr_setdetachstate(
+ *         &attr,
+ *         PTHREAD_CREATE_DETACHED
+ *     );
+ *
+ *     pthread_create(&tid, &attr, worker, arg);
+ *
+ *   DETACH AN EXISTING THREAD:
+ *
+ *     pthread_detach(tid);
+ *
+ *   A detached thread cannot later be joined.
+ *
+ *
+ * 12. CONDITION VARIABLES
+ * ------------------------------------------------------------
+ *
+ *   Used when threads must wait for a shared condition.
+ *
+ *   TYPE:
+ *
+ *     pthread_cond_t cond;
+ *
+ *   STATIC INITIALIZATION:
+ *
+ *     pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+ *
+ *   DYNAMIC INITIALIZATION:
+ *
+ *     pthread_cond_init(&cond, NULL);
+ *
+ *   WAIT:
+ *
+ *     pthread_cond_wait(&cond, &mutex);
+ *
+ *   IMPORTANT BEHAVIOR:
+ *
+ *     1. Atomically releases the supplied mutex and waits.
+ *     2. Sleeps until awakened.
+ *     3. Re-acquires the mutex before returning.
+ *
+ *   SIGNAL ONE WAITING THREAD:
+ *
+ *     pthread_cond_signal(&cond);
+ *
+ *   WAKE ALL WAITING THREADS:
+ *
+ *     pthread_cond_broadcast(&cond);
+ *
+ *   DESTROY:
+ *
+ *     pthread_cond_destroy(&cond);
+ *
+ *   ALWAYS CHECK THE CONDITION IN A WHILE LOOP:
+ *
+ *     pthread_mutex_lock(&mutex);
+ *
+ *     while (!condition)
+ *         pthread_cond_wait(&cond, &mutex);
+ *
+ *     // Condition is true while mutex is held.
+ *
+ *     pthread_mutex_unlock(&mutex);
+ *
+ *   WHY WHILE, NOT IF?
+ *     - Spurious wakeups are possible.
+ *     - Another thread may change the condition before
+ *       this thread reacquires the mutex.
+ *     - A signal does NOT guarantee the condition is true.
+ *
+ *   Condition variables do not store notifications as
+ *   persistent events. The shared predicate is what matters.
+ *
+ *
+ * ============================================================
+ *           13. CANCELLATION AND CLEANUP HANDLERS
+ * ============================================================
+ *
+ *   THREAD CANCELLATION:
+ *
+ *     int pthread_cancel(pthread_t thread);
+ *
+ *   Requests cancellation of the specified thread.
+ *
+ *   IMPORTANT:
+ *     - pthread_cancel() sends a REQUEST.
+ *     - It does NOT necessarily terminate the thread immediately.
+ *     - The target thread acts on the request according to
+ *       its cancellation state and type.
+ *
+ *   RETURNS:
+ *     0       -> request successfully queued
+ *     nonzero -> error number
+ *
+ *   DEFAULT CANCELLATION SETTINGS:
+ *
+ *     PTHREAD_CANCEL_ENABLE
+ *     PTHREAD_CANCEL_DEFERRED
+ *
+ *   ----------------------------------------------------------
+ *   CANCELLATION STATE
+ *   ----------------------------------------------------------
+ *
+ *     int pthread_setcancelstate(int state, int *oldstate);
+ *
+ *   Possible states:
+ *
+ *     PTHREAD_CANCEL_ENABLE
+ *       -> cancellation requests can be acted upon.
+ *
+ *     PTHREAD_CANCEL_DISABLE
+ *       -> cancellation requests remain pending;
+ *          they are not acted upon until cancellation is enabled.
+ *
+ *   Example:
+ *
+ *     int oldstate;
+ *
+ *     pthread_setcancelstate(
+ *         PTHREAD_CANCEL_DISABLE,
+ *         &oldstate
+ *     );
+ *
+ *     // Cancellation temporarily disabled.
+ *
+ *     pthread_setcancelstate(oldstate, NULL);
+ *
+ *   ----------------------------------------------------------
+ *   CANCELLATION TYPE
+ *   ----------------------------------------------------------
+ *
+ *     int pthread_setcanceltype(int type, int *oldtype);
+ *
+ *   Possible types:
+ *
+ *     PTHREAD_CANCEL_DEFERRED
+ *       -> cancellation occurs at cancellation points.
+ *       -> DEFAULT type.
+ *
+ *     PTHREAD_CANCEL_ASYNCHRONOUS
+ *       -> cancellation may occur at almost any moment.
+ *       -> dangerous: the thread may be interrupted while
+ *          modifying shared data or holding a resource.
+ *
+ *   Prefer DEFERRED cancellation.
+ *
+ *   ----------------------------------------------------------
+ *   CANCELLATION POINTS
+ *   ----------------------------------------------------------
+ *
+ *   A cancellation point is a point where a thread with
+ *   enabled deferred cancellation can act on a pending
+ *   cancellation request.
+ *
+ *   Examples include:
+ *
+ *     read()
+ *     write()
+ *     nanosleep()
+ *     pthread_join()
+ *     pthread_cond_wait()
+ *
+ *   Exact cancellation points are defined by POSIX.
+ *
+ *   EXPLICIT CANCELLATION POINT:
+ *
+ *     pthread_testcancel();
+ *
+ *   If cancellation is enabled and pending, this function
+ *   acts on the request.
+ *
+ *
+ *   ----------------------------------------------------------
+ *   CLEANUP HANDLERS
+ *   ----------------------------------------------------------
+ *
+ *   Cleanup handlers are functions registered by a thread
+ *   to release resources when it is cancelled or exits
+ *   through pthread_exit().
+ *
+ *   Common uses:
+ *     - Unlocking a mutex.
+ *     - Freeing dynamically allocated memory.
+ *     - Closing files.
+ *     - Releasing other resources.
+ *
+ *   HANDLER FUNCTION:
+ *
+ *     void cleanup(void *arg)
+ *     {
+ *         // Release resource represented by arg.
+ *     }
+ *
+ *   REGISTER A HANDLER:
+ *
+ *     pthread_cleanup_push(cleanup, arg);
+ *
+ *   REMOVE A HANDLER:
+ *
+ *     pthread_cleanup_pop(execute);
+ *
+ *   execute:
+ *     0       -> remove handler WITHOUT executing it.
+ *     nonzero -> execute handler, then remove it.
+ *
+ *   Example:
+ *
+ *     void unlock_mutex(void *arg)
+ *     {
+ *         pthread_mutex_unlock((pthread_mutex_t *)arg);
+ *     }
+ *
+ *     void *worker(void *arg)
+ *     {
+ *         pthread_mutex_lock(&mutex);
+ *
+ *         pthread_cleanup_push(unlock_mutex, &mutex);
+ *
+ *         // Work while mutex is locked.
+ *
+ *         pthread_cleanup_pop(1);
+ *
+ *         return NULL;
+ *     }
+ *
+ *   Here pthread_cleanup_pop(1) executes unlock_mutex()
+ *   during normal execution.
+ *
+ *
+ *   ----------------------------------------------------------
+ *   WHEN ARE CLEANUP HANDLERS EXECUTED?
+ *   ----------------------------------------------------------
+ *
+ *   1. Thread is cancelled:
+ *        All pending cleanup handlers are executed.
+ *
+ *   2. Thread calls pthread_exit():
+ *        All pending cleanup handlers are executed.
+ *
+ *   3. Thread calls pthread_cleanup_pop(nonzero):
+ *        The top handler is executed and removed.
+ *
+ *   IMPORTANT LIFO ORDER:
+ *
+ *     Handlers execute in reverse order of registration.
+ *
+ *     push(cleanup_A);
+ *     push(cleanup_B);
+ *     push(cleanup_C);
+ *
+ *     Execution order:
+ *       cleanup_C
+ *       cleanup_B
+ *       cleanup_A
+ *
+ *   IMPORTANT NORMAL-RETURN DETAIL:
+ *
+ *     On Linux, simply returning from the thread start
+ *     routine does NOT execute pending cleanup handlers.
+ *
+ *     Use pthread_cleanup_pop(1) to execute a handler
+ *     on a normal path.
+ *
+ *   IMPORTANT MACRO DETAIL:
+ *
+ *     pthread_cleanup_push() and pthread_cleanup_pop()
+ *     may be implemented as macros that introduce braces.
+ *
+ *     Therefore:
+ *       - They must be paired.
+ *       - They must appear in the same function.
+ *       - They must be at the same lexical nesting level.
+ *       - Do not jump out of the block using return, goto,
+ *         break, or continue.
+ *
+ *
+ *   ----------------------------------------------------------
+ *   WHAT HAPPENS WHEN A THREAD IS CANCELLED?
+ *   ----------------------------------------------------------
+ *
+ *   General sequence:
+ *
+ *     1. Cancellation cleanup handlers execute (LIFO).
+ *     2. Thread-specific data destructors execute.
+ *     3. Thread terminates.
+ *
+ *   After termination, pthread_join() can collect:
+ *
+ *     PTHREAD_CANCELED
+ *
+ *   Example:
+ *
+ *     pthread_cancel(tid);
+ *
+ *     void *status;
+ *     pthread_join(tid, &status);
+ *
+ *     if (status == PTHREAD_CANCELED) {
+ *         // Thread was cancelled.
+ *     }
+ *
+ *   A successful pthread_cancel() does NOT mean that
+ *   the thread has already terminated.
+ *
+ *   pthread_join() can be used to wait for completion.
+ *
+ *
+ * ============================================================
+ *             14. THREAD-SPECIFIC DATA (TSD)
+ * ============================================================
+ *
+ *   Threads share global variables and heap memory.
+ *
+ *   Sometimes each thread needs its own value associated
+ *   with the same logical variable/key.
+ *
+ *   Thread-specific data provides this.
+ *
+ *   A key identifies a per-thread value.
+ *
+ *   CREATE A KEY:
+ *
+ *     pthread_key_t key;
+ *
+ *     pthread_key_create(&key, destructor);
+ *
+ *   SET VALUE FOR CALLING THREAD:
+ *
+ *     pthread_setspecific(key, pointer);
+ *
+ *   GET VALUE FOR CALLING THREAD:
+ *
+ *     void *p = pthread_getspecific(key);
+ *
+ *   DELETE KEY:
+ *
+ *     pthread_key_delete(key);
+ *
+ *   DESTRUCTOR:
+ *
+ *     void destructor(void *value)
+ *     {
+ *         free(value);
+ *     }
+ *
+ *   The destructor is called when a thread terminates if
+ *   that thread has a non-NULL value associated with the key.
+ *
+ *   IMPORTANT:
+ *     - Each thread has its own value for the same key.
+ *     - The key itself is shared.
+ *     - Destructors run when the thread exits.
+ *     - Destructor execution order is unspecified.
+ *     - pthread_key_delete() deletes the key; it does NOT
+ *       automatically free every thread's associated value.
+ *
+ *
+ * ============================================================
+ *                    15. ERROR HANDLING
+ * ============================================================
+ *
+ *   pthread functions generally return:
+ *
+ *     0       -> success
+ *     nonzero -> error number directly
+ *
+ *   They generally do NOT return -1 and set errno.
+ *
+ *   Example:
+ *
+ *     int err = pthread_create(&tid, NULL, worker, arg);
+ *
+ *     if (err != 0) {
+ *         // err itself is the error number.
+ *     }
+ *
+ *   COMMON ERRORS:
+ *
+ *     EAGAIN   -> insufficient resources / thread limit reached
+ *     EINVAL   -> invalid attribute or argument
+ *     EPERM    -> insufficient permission for requested setting
+ *     ESRCH    -> no thread with the specified ID
+ *     EBUSY    -> resource is busy (e.g. trylock)
+ *     EDEADLK  -> detected deadlock or invalid self-join
+ *
+ *
+ * ============================================================
+ *                    IMPORTANT DISTINCTIONS
+ * ============================================================
+ *
+ *   pthread_create()        -> create a thread
+ *   pthread_join()          -> wait for a joinable thread
+ *   pthread_exit()          -> terminate calling thread
+ *   exit()                  -> terminate entire process
+ *   pthread_self()          -> get calling thread's ID
+ *   pthread_equal()         -> compare thread IDs
+ *
+ *   pthread_cancel()        -> request cancellation
+ *   pthread_testcancel()    -> test for pending cancellation
+ *
+ *   pthread_setcancelstate()-> enable/disable cancellation
+ *   pthread_setcanceltype() -> deferred/asynchronous mode
+ *
+ *   pthread_cleanup_push()  -> register cleanup handler
+ *   pthread_cleanup_pop()   -> remove/optionally execute handler
+ *
+ *   pthread_key_create()    -> create TSD key
+ *   pthread_setspecific()   -> set calling thread's value
+ *   pthread_getspecific()   -> get calling thread's value
+ *   pthread_key_delete()   -> delete TSD key
+ *
+ *   MUTEX                  -> protects shared data
+ *   CONDITION VARIABLE    -> lets threads wait for a predicate
+ *   CLEANUP HANDLER       -> releases resources on termination
+ *   TSD                   -> per-thread data associated with a key
+ *
+ *   JOINABLE               -> can be joined
+ *   DETACHED               -> cannot be joined; auto cleanup
+ *
+ * ============================================================
+ */

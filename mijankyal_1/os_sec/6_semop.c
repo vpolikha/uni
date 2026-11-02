@@ -12,20 +12,28 @@ union semun{
 int main(){
     int sid, res;
 
-    sid = semget(KEY, 1, IPC_CREAT | IPC_EXCL | 0666);
+    sid = semget(KEY, 1, IPC_CREAT | 0666);
     if (-1 == sid){
         perror("semget error!");
         return 1;
     }
+    
+    struct sembuf buf = {0, 1, 0};
 
-    union semun arg;
-    arg.val = 1;
-
-    res = semctl(sid, 0, SETVAL, arg);
+    res = semop(sid, &buf, 1);
     if (-1 == res){
-        perror("semctl error!");
+        perror("semop error");
         return 1;
     }
+
+    //union semun arg;
+    //arg.val = 1;
+
+    //res = semctl(sid, 0, SETVAL, arg);
+    //if (-1 == res){
+    //    perror("semctl error!");
+    //    return 1;
+    //}
 
     res = semctl(sid, 0, GETVAL);
     if (-1 == res){
@@ -34,9 +42,9 @@ int main(){
     }
     printf("sid = %i value = %i", sid, res);
 
-    res = semctl(sid, 0, IPC_RMID);
-    if (-1 == res){
-        perror("semctl IPC_RMID error!");
-        return 1;
-    }
+    //res = semctl(sid, 0, IPC_RMID);
+    //if (-1 == res){
+    //    perror("semctl IPC_RMID error!");
+    //    return 1;
+    //}
 }
