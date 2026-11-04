@@ -20,3 +20,29 @@ knowing only the encryption key
 3) hybrid
 info is encrypted with symmetric key
 symmetric key is encrypted with public key of reciever
+
+The aymmetric wncryption os the most comfortable to be used on personal PCs.
+A enc(a)
+A ->(a) B
+B enc(a+b)
+B ->(a+b) A
+A enc(a+b-a) = enc(b)
+B enc(b-b) = plain text!
+
+requirements:
+• information should be read only with decryption key
+• the amount of possible keys used for encrypting the fraction of the text should not be less than the amount of keys in the case of the whole text
+• the least amount of operations for brute forcing the ecnryption should be estimated and out of capabilities of modern computers
+• the familiarity of the algotithm should not affect its breaking resistance
+• the parts of algorithm should remain constant
+• the lenghts of ecrypted and plain texts should match
+• each possible key should guarantee the enough quality of the encryption
+• the key length change should not lead to the encyption quality drop
+
+
+The estimation of algorithm's quality:
+• enemy kniwws everything about the algorithm
+• enemy has A LOT OF encrypted text
+• enemy has plain text that matches SOME corresponding part of the encrypted text
+• enemy knows all pissible keys
+
