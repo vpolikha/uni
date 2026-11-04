@@ -1,0 +1,22 @@
+encoding - without key
+encryption - without key
+
+gaxtnabanutyun: gaxtnagrutyun, gaxtnaverlucutyun
+
+encryption only guaranties the information to remain secret,
+not to be untouched
+
+encryption can be:
+1) symmetric
+one key is used for both de and en cryption
++: speed, simplecity
+-: both sender and reciever must know the key, hard key management,
+need for physically secure way for key exchanging
+2) asimmetric
+it is impossimble to find out the decryption key
+knowing only the encryption key
++: small amount of key needed, any length of key
+-: low speed, high calculation power needed
+3) hybrid
+info is encrypted with symmetric key
+symmetric key is encrypted with public key of reciever
