@@ -1,0 +1,703 @@
+CRYPTOLOGY EXAM — CIPHER ALGORITHMS CHEATSHEET
+
+==================================================
+
+1\.
+
+### CAESAR CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Monoalphabetic substitution cipher.
+
+* Each plaintext letter is shifted by a fixed number of positions.
+
+KEY:
+
+* An integer K representing the number of positions to shift.
+
+* Usually K is between 1 and 25 for the English alphabet.
+
+KEY GENERATION:
+
+* Choose a random integer K between 1 and 25.
+
+* The sender and receiver must know the same K.
+
+* The key can be shared beforehand through a secure channel.
+
+ENCRYPTION ALGORITHM:
+
+* Assign numbers to letters: A=0, B=1, ..., Z=25.
+
+* Convert each plaintext letter into its numerical value.
+
+* Add K to each value.
+
+* Apply modulo 26.
+
+* Convert the resulting numbers back into letters.
+
+Formula: C = (P + K) mod 26
+
+DECRYPTION ALGORITHM:
+
+* Convert each ciphertext letter into its numerical value.
+
+* Subtract K.
+
+* Apply modulo 26.
+
+* Convert the resulting numbers back into letters.
+
+Formula: P = (C - K) mod 26
+
+EXAMPLE: Plaintext: HELLO Key: 3 Ciphertext: KHOOR
+
+WEAKNESSES:
+
+* Only 25 possible nontrivial keys.
+
+* Vulnerable to brute-force attacks.
+
+* Vulnerable to frequency analysis.
+
+* Every occurrence of the same plaintext letter produces the same ciphertext letter.
+
+* Does not provide modern cryptographic security.
+
+HOW TO BREAK IT:
+
+* Try all 25 possible keys (brute force).
+
+* Use frequency analysis to identify probable letter substitutions.
+
+HOW TO USE IT:
+
+* Choose a shift value.
+
+* Encrypt by shifting every letter forward.
+
+* Decrypt by shifting every letter backward.
+
+### ================================================== 2\. SIMPLE SUBSTITUTION CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Monoalphabetic substitution cipher.
+
+* Every plaintext letter is replaced with another letter according to a fixed substitution alphabet.
+
+KEY:
+
+* A permutation of the alphabet.
+
+* Each plaintext letter corresponds to exactly one ciphertext letter.
+
+* Every ciphertext letter must correspond to exactly one plaintext letter.
+
+KEY GENERATION:
+
+* Write the normal alphabet.
+
+* Randomly rearrange its letters.
+
+* Use the resulting alphabet as the substitution key.
+
+EXAMPLE KEY:
+
+Plaintext: ABCDEFGHIJKLMNOPQRSTUVWXYZ Ciphertext: QWERTYUIOPASDFGHJKLZXCVBNM
+
+ENCRYPTION ALGORITHM:
+
+* Take a plaintext letter.
+
+* Find its position in the normal alphabet.
+
+* Find the letter at the same position in the substitution alphabet.
+
+* Replace the plaintext letter with that ciphertext letter.
+
+* Repeat for the entire message.
+
+DECRYPTION ALGORITHM:
+
+* Take a ciphertext letter.
+
+* Find it in the substitution alphabet.
+
+* Find the corresponding letter in the normal alphabet.
+
+* Replace the ciphertext letter with the corresponding plaintext letter.
+
+EXAMPLE: Plaintext: HELLO Ciphertext: ITSSG
+
+WEAKNESSES:
+
+* Vulnerable to frequency analysis.
+
+* Letter frequencies remain unchanged, only their identities change.
+
+* Repeated letters and common letter combinations can reveal patterns.
+
+* The key space is approximately 26! possible permutations, but a large key space alone does not guarantee security.
+
+HOW TO BREAK IT:
+
+* Analyze ciphertext letter frequencies.
+
+* Compare frequencies with known language statistics.
+
+* Identify common patterns such as THE, AND, and repeated letters.
+
+* Gradually reconstruct the substitution alphabet.
+
+HOW TO USE IT:
+
+* Generate a random permutation of the alphabet.
+
+* Share the substitution alphabet securely.
+
+* Replace every plaintext letter according to the key.
+
+* Reverse the mapping to decrypt.
+
+### ================================================== 3\. HOMOPHONIC SUBSTITUTION CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Monoalphabetic substitution cipher (with multiple ciphertext symbols per plaintext letter).
+
+* One plaintext letter can correspond to several possible ciphertext symbols.
+
+KEY:
+
+* A substitution table.
+
+* Each plaintext letter has one or more assigned ciphertext symbols.
+
+* Each ciphertext symbol must correspond to only one plaintext letter.
+
+KEY GENERATION:
+
+* Create a set of unique ciphertext symbols.
+
+* Assign one or more symbols to each plaintext letter.
+
+* Assign more symbols to frequently occurring letters (e.g., E, T, A).
+
+* Ensure that every ciphertext symbol has an unambiguous plaintext mapping.
+
+EXAMPLE KEY:
+
+A -> 11, 12, 13 B -> 21 C -> 31, 32 D -> 41, 42 E -> 51, 52, 53, 54
+
+ENCRYPTION ALGORITHM:
+
+* Take a plaintext letter.
+
+* Find all ciphertext symbols assigned to it.
+
+* Randomly select one of those symbols.
+
+* Replace the plaintext letter with the selected symbol.
+
+* Repeat for the entire message.
+
+DECRYPTION ALGORITHM:
+
+* Take a ciphertext symbol.
+
+* Find it in the reverse substitution table.
+
+* Identify its corresponding plaintext letter.
+
+* Repeat for all ciphertext symbols.
+
+EXAMPLE: Plaintext: EEBE Possible ciphertext: 51 54 21 52
+
+WEAKNESSES:
+
+* The number of possible symbols may be insufficient to hide statistical patterns.
+
+* Symbol distribution can still reveal information.
+
+* Repeated patterns and predictable symbol selection can weaken security.
+
+* Vulnerable to statistical analysis, especially with large ciphertext samples.
+
+HOW TO BREAK IT:
+
+* Analyze the frequency of ciphertext symbols.
+
+* Compare their frequencies with expected language frequencies.
+
+* Look for groups of symbols that collectively represent frequent plaintext letters.
+
+* Use repeated patterns and linguistic analysis.
+
+HOW TO USE IT:
+
+* Generate a substitution table.
+
+* Share the table with the receiver.
+
+* Randomly choose one of the assigned symbols for every plaintext letter.
+
+* Decrypt using the reverse table.
+
+### ================================================== 4\. VIGENERE CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Polyalphabetic substitution cipher.
+
+* Uses multiple Caesar substitutions determined by a repeating keyword.
+
+KEY:
+
+* A keyword consisting of alphabetic characters.
+
+* The keyword is repeated until it matches the plaintext length.
+
+KEY GENERATION:
+
+* Choose a keyword.
+
+* Prefer a sufficiently random and unpredictable keyword.
+
+* Share the keyword securely with the receiver.
+
+* Repeat the keyword during encryption.
+
+EXAMPLE:
+
+Plaintext: ATTACKATDAWN Key: LEMONLEMONLE
+
+Use A=0, B=1, ..., Z=25.
+
+ENCRYPTION ALGORITHM:
+
+* Convert plaintext letters into numbers.
+
+* Convert key letters into numbers.
+
+* Repeat the key until it matches the plaintext length.
+
+* Add the corresponding plaintext and key values.
+
+* Apply modulo 26.
+
+* Convert the results back into letters.
+
+Formula: C(i) = (P(i) + K(i)) mod 26
+
+DECRYPTION ALGORITHM:
+
+* Convert ciphertext letters into numbers.
+
+* Convert key letters into numbers.
+
+* Repeat the key until it matches the ciphertext length.
+
+* Subtract the key value from the ciphertext value.
+
+* Apply modulo 26.
+
+* Convert the results back into letters.
+
+Formula: P(i) = (C(i) - K(i)) mod 26
+
+EXAMPLE: Plaintext: ATTACKATDAWN Key: LEMONLEMONLE Ciphertext: LXFOPVEFRNHR
+
+WEAKNESSES:
+
+* Repeating keywords create recognizable patterns.
+
+* Vulnerable to Kasiski examination.
+
+* Vulnerable to Index of Coincidence analysis.
+
+* Once the key length is known, the ciphertext can be divided into groups of Caesar ciphers.
+
+* Short or predictable keywords make attacks easier.
+
+HOW TO BREAK IT:
+
+STEP 1 — FIND THE KEY LENGTH:
+
+A. Kasiski examination:
+
+* Find repeated sequences in ciphertext.
+
+* Calculate distances between their occurrences.
+
+* Find common divisors of those distances.
+
+* Use the common divisors as candidate key lengths.
+
+B. Index of Coincidence:
+
+* Calculate statistical coincidence between letters.
+
+* Test different possible key lengths.
+
+* Divide ciphertext into groups according to each candidate length.
+
+* Calculate IC for each group.
+
+* Correct key lengths tend to produce IC values closer to normal language statistics.
+
+STEP 2 — RECOVER THE KEY:
+
+* Divide ciphertext into groups according to key positions.
+
+* Each group was encrypted using one fixed Caesar shift.
+
+* Perform frequency analysis on each group.
+
+* Estimate the Caesar shift for every group.
+
+* Combine the shifts to reconstruct the keyword.
+
+STEP 3 — DECRYPT:
+
+* Use the recovered keyword.
+
+* Apply the Vigenere decryption formula.
+
+HOW TO USE IT:
+
+* Generate a keyword.
+
+* Repeat it to match the plaintext length.
+
+* Add corresponding plaintext and key values modulo 26.
+
+* The receiver uses the same keyword and subtracts the key values.
+
+### ================================================== 5\. SCYTALE CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Transposition cipher.
+
+* Rearranges character positions without changing the characters themselves.
+
+KEY:
+
+* The diameter of the rod or, more generally, the wrapping geometry.
+
+* Determines how many characters fit in each row/column.
+
+KEY GENERATION:
+
+* Choose a rod diameter.
+
+* Determine the width of the writing arrangement.
+
+* The sender and receiver must use compatible rods with the same dimensions.
+
+ENCRYPTION ALGORITHM:
+
+* Take a long strip of parchment or leather.
+
+* Wrap it around the cylindrical rod.
+
+* Write the plaintext along the rod, across the wrapped strip.
+
+* Unwrap the strip.
+
+* Read the resulting letters in the order they appear on the strip.
+
+DECRYPTION ALGORITHM:
+
+* Take the ciphertext strip.
+
+* Wrap it around a rod with the same dimensions.
+
+* Read the letters along the rod.
+
+* Recover the original plaintext.
+
+WEAKNESSES:
+
+* Small number of possible rod dimensions.
+
+* Vulnerable to trying different dimensions.
+
+* Letter frequencies remain unchanged.
+
+* Language patterns remain present.
+
+HOW TO BREAK IT:
+
+* Try different rod diameters or arrangements.
+
+* Analyze possible transposition patterns.
+
+* Look for recognizable plaintext sequences.
+
+HOW TO USE IT:
+
+* Wrap a strip around a rod.
+
+* Write the message along the rod.
+
+* Unwrap the strip to obtain ciphertext.
+
+* The receiver uses a matching rod to decrypt.
+
+### ================================================== 6\. COLUMNAR TRANSPOSITION CIPHER
+
+TYPE:
+
+* Symmetric encryption.
+
+* Transposition cipher.
+
+* Rearranges the positions of characters according to a table and column-reading order.
+
+KEY:
+
+* Number of columns (simple version).
+
+* A keyword determining the order in which columns are read (keyed version).
+
+KEY GENERATION:
+
+* Choose a fixed number of columns.
+
+* Alternatively, choose a keyword.
+
+* For keyed columnar transposition, assign column reading order according to the alphabetical order of the keyword's letters.
+
+ENCRYPTION ALGORITHM:
+
+* Write plaintext horizontally, row by row, into a table.
+
+* Use the number of columns determined by the key.
+
+* Read the table vertically, column by column.
+
+* If a keyword is used, read columns according to the keyword's alphabetical order.
+
+* Combine the resulting characters into ciphertext.
+
+EXAMPLE:
+
+Plaintext: ATTACKATDAWN Number of columns: 4
+
+A T T A C K A T D A W N
+
+Read columns:
+
+ACD | TKA | TAW | ATN
+
+Ciphertext: ACDTKATAWATN
+
+DECRYPTION ALGORITHM:
+
+* Determine the number of columns using the key.
+
+* Determine the number of rows from ciphertext length.
+
+* Divide ciphertext into column segments.
+
+* Place the segments into their corresponding columns.
+
+* Read the table horizontally, row by row.
+
+* Recover the plaintext.
+
+WEAKNESSES:
+
+* Letter frequencies remain unchanged.
+
+* Vulnerable to statistical analysis.
+
+* Small key spaces in simple versions.
+
+* Repeated patterns and language structure can reveal the original arrangement.
+
+HOW TO BREAK IT:
+
+* Try possible column counts and column orders.
+
+* Analyze letter combinations and likely word patterns.
+
+* Use brute force for small key spaces.
+
+HOW TO USE IT:
+
+* Write plaintext into a table row by row.
+
+* Read columns according to the key.
+
+* The receiver reconstructs the table and reads rows.
+
+### ================================================== 7\. FEISTEL NETWORK
+
+TYPE:
+
+* Symmetric block cipher construction.
+
+* Uses multiple rounds of transformations.
+
+* Basis for DES.
+
+KEY:
+
+* A secret encryption key.
+
+* A key schedule derives separate round keys from the original key.
+
+KEY GENERATION:
+
+* Generate a secret key.
+
+* Apply the key schedule.
+
+* Generate round keys K1, K2, ..., Kn.
+
+* Share the original secret key securely with the receiver.
+
+STRUCTURE:
+
+* Divide plaintext block into two equal halves: L0 and R0.
+
+* Perform multiple rounds of transformations.
+
+* Each round uses a round key.
+
+ENCRYPTION ALGORITHM:
+
+For every round i:
+
+L(i+1) = R(i)
+
+R(i+1) = L(i) XOR F(R(i), K(i))
+
+Where:
+
+* L = left half.
+
+* R = right half.
+
+* F = round function.
+
+* K = round key.
+
+* XOR = exclusive OR operation.
+
+Repeat for the required number of rounds.
+
+DECRYPTION ALGORITHM:
+
+* Use the same Feistel structure.
+
+* Apply round keys in reverse order.
+
+* Recover the original plaintext block.
+
+Encryption keys: K1, K2, K3, ..., Kn
+
+Decryption keys: Kn, ..., K3, K2, K1
+
+IMPORTANT:
+
+* The round function F does not need to be invertible.
+
+* XOR allows the original data to be recovered.
+
+* The same round function is used for encryption and decryption.
+
+WEAKNESSES:
+
+* Security depends on the round function.
+
+* Security depends on the key schedule.
+
+* Insufficient rounds can make attacks easier.
+
+* Poor implementation can introduce vulnerabilities.
+
+* Feistel itself is a construction, not a complete encryption algorithm.
+
+HOW TO BREAK IT:
+
+* Attacks depend on the particular Feistel-based cipher.
+
+* DES, for example, has known differential and linear cryptanalysis attacks.
+
+* Weak keys, insufficient rounds, and implementation weaknesses can be exploited.
+
+HOW TO USE IT:
+
+* Divide plaintext into two halves.
+
+* Apply the Feistel round formulas.
+
+* Repeat using different round keys.
+
+* Decrypt using the same structure and reversed key order.
+
+### ================================================== 8\. QUICK COMPARISON
+
+| Algorithm              | Type                        | Key                     |
+| ---------------------- | --------------------------- | ----------------------- |
+| Caesar                 | Monoalphabetic substitution | Shift number            |
+| Simple substitution    | Monoalphabetic substitution | Alphabet permutation    |
+| Homophonic             | Homophonic substitution     | Substitution table      |
+| Vigenere               | Polyalphabetic substitution | Repeating keyword       |
+| Scytale                | Transposition               | Rod dimensions          |
+| Columnar transposition | Transposition               | Column count/order      |
+| Feistel                | Block cipher construction   | Secret key + round keys |
+
+### ================================================== 9\. MOST IMPORTANT DIFFERENCES
+
+SUBSTITUTION:
+
+* Changes the identity of characters.
+
+* Usually preserves character positions.
+
+TRANSPOSITION:
+
+* Preserves character identities.
+
+* Changes character positions.
+
+MONOALPHABETIC:
+
+* Uses one fixed substitution mapping.
+
+* Same plaintext letter always maps to the same ciphertext symbol.
+
+POLYALPHABETIC:
+
+* Uses multiple substitution mappings.
+
+* Same plaintext letter can produce different ciphertext letters.
+
+FEISTEL:
+
+* Divides a block into two halves.
+
+* Uses multiple rounds of XOR and a round function.
+
+* Decryption uses reversed round-key order.
+
+================================================== END OF CHEATSHEET ==================================================
+
+A small correction worth remembering for the exam: in Scytale, the key is not necessarily just a numerical column count. It is the physical rod's dimensions and the corresponding wrapping arrangement. Also, the simple columnar transposition example above uses a fixed column order; keyed columnar transposition adds a keyword that determines the order of reading columns.
