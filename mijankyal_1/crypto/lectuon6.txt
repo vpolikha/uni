@@ -1,0 +1,320 @@
+```text
+DES AND S-DES — CHEAT SHEET
+
+==================================================
+1. DES — DATA ENCRYPTION STANDARD
+==================================================
+
+BASIC CHARACTERISTICS:
+- Type: Symmetric block cipher.
+- Block size: 64 bits.
+- Original key size: 64 bits.
+- Effective key size: 56 bits (8 bits are parity bits).
+- Number of rounds: 16.
+- Structure: Feistel network.
+- Generates 16 round keys, each 48 bits.
+
+KEY GENERATION (KEY SCHEDULE):
+
+1. Start with a 64-bit key.
+2. Apply Permuted Choice 1 (PC-1):
+   - Rearranges the bits.
+   - Removes 8 parity bits.
+   - Produces 56 bits.
+3. Split into two 28-bit halves: C0 and D0.
+4. Perform circular left shifts on both halves in
+   each round.
+5. Apply Permuted Choice 2 (PC-2):
+   - Selects and rearranges 48 bits.
+   - Generates one round key Ki.
+
+SHIFT SCHEDULE:
+
+Round:  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16
+Shift:  1  1  2  2  2  2  2  2  1  2  2  2  2  2  2  1
+
+ENCRYPTION ALGORITHM:
+
+STAGE 1 — INITIAL PERMUTATION (IP):
+1. Take the 64-bit plaintext.
+2. Apply the Initial Permutation (IP).
+3. Split the result into two 32-bit halves:
+   L0 and R0.
+
+STAGE 2 — 16 FEISTEL ROUNDS:
+
+For each round i:
+
+Li = Ri-1
+Ri = Li-1 XOR F(Ri-1, Ki)
+
+The F function performs:
+
+1. Expansion (E):
+   - Expands the 32-bit right half into 48 bits.
+
+2. XOR:
+   - XOR the expanded 48-bit result with the
+     48-bit round key Ki.
+
+3. Substitution (S-boxes):
+   - Divide the 48-bit result into eight 6-bit blocks.
+   - Each block enters a separate S-box.
+   - Each S-box converts 6 bits into 4 bits.
+   - Total output: 32 bits.
+
+4. Permutation (P):
+   - Rearranges the resulting 32 bits.
+
+STAGE 3 — FINAL PERMUTATION:
+
+1. After 16 rounds, swap the final halves:
+   R16 || L16.
+2. Apply the inverse initial permutation (IP^-1).
+3. Obtain the 64-bit ciphertext.
+
+DECRYPTION ALGORITHM:
+
+- Uses the same Feistel structure as encryption.
+- The only difference is the order of round keys.
+
+Encryption: K1, K2, K3, ... K16
+Decryption: K16, K15, K14, ... K1
+
+WEAKNESSES:
+
+- Effective key size is only 56 bits.
+- Vulnerable to brute-force attacks.
+- Has known weak and semi-weak keys.
+- 64-bit block size is too small for modern use.
+- Obsolete; replaced by AES.
+
+HOW TO USE DES:
+
+1. Generate 16 round keys.
+2. Apply IP to the plaintext.
+3. Split into L0 and R0.
+4. Perform 16 Feistel rounds.
+5. Swap final halves.
+6. Apply IP^-1.
+7. Obtain ciphertext.
+
+==================================================
+2. S-DES — SIMPLIFIED DATA ENCRYPTION STANDARD
+==================================================
+
+BASIC CHARACTERISTICS:
+
+- Type: Symmetric block cipher.
+- Block size: 8 bits.
+- Key size: 10 bits.
+- Number of rounds: 2.
+- Structure: Feistel network.
+- Generates two round keys: K1 and K2.
+- Educational version of DES, not secure for real use.
+
+KEY GENERATION:
+
+1. Start with a 10-bit key.
+
+2. Apply P10:
+
+   P10 = 3 5 2 7 4 10 1 9 8 6
+
+   Rearranges all 10 bits.
+
+3. Split into two 5-bit halves:
+   L and R.
+
+4. Perform circular left shift by 1 (LS-1)
+   on each half.
+
+5. Combine the halves and apply P8:
+
+   P8 = 6 3 7 4 8 5 10 9
+
+   Selects and rearranges 8 bits.
+
+   Result: K1 (8-bit round key).
+
+6. Starting from the halves after LS-1,
+   perform another circular left shift by 2
+   (LS-2) on each half.
+
+7. Combine the halves and apply P8 again.
+
+   Result: K2 (8-bit round key).
+
+ENCRYPTION ALGORITHM:
+
+STAGE 1 — INITIAL PERMUTATION:
+
+1. Take the 8-bit plaintext.
+2. Apply IP:
+
+   IP = 2 6 3 1 4 8 5 7
+
+3. Split into two 4-bit halves:
+   L0 and R0.
+
+STAGE 2 — FIRST ROUND (K1):
+
+The right half goes through the fK function.
+
+fK FUNCTION:
+
+1. Expansion and Permutation (EP):
+   - Expands 4 bits into 8 bits.
+
+2. XOR:
+   - XOR the 8-bit result with K1.
+
+3. S-box substitution:
+   - Split the result into two 4-bit blocks.
+   - Each block enters an S-box.
+   - Each S-box converts 4 bits into 2 bits.
+   - Total output: 4 bits.
+
+4. Apply P4:
+
+   P4 = 2 4 3 1
+
+   Rearranges the resulting 4 bits.
+
+5. XOR:
+   - XOR the result with the left 4-bit half.
+
+The first round produces new left and right halves.
+
+STAGE 3 — SWAP:
+
+Exchange the two 4-bit halves.
+
+STAGE 4 — SECOND ROUND (K2):
+
+Perform the same fK operation using K2.
+
+STAGE 5 — FINAL PERMUTATION:
+
+1. Combine the two halves.
+2. Apply the inverse initial permutation:
+
+   IP^-1 = 4 1 3 5 7 2 8 6
+
+3. Obtain the 8-bit ciphertext.
+
+DECRYPTION ALGORITHM:
+
+- Uses the same encryption procedure.
+- Only the round key order changes.
+
+Encryption: K1 -> K2
+Decryption: K2 -> K1
+
+WEAKNESSES:
+
+- Extremely small 10-bit key.
+- Only 8-bit blocks.
+- Can be brute-forced trivially.
+- Designed only for educational purposes.
+
+HOW TO USE S-DES:
+
+1. Take a 10-bit key.
+2. Generate K1 and K2 using P10, shifts and P8.
+3. Take an 8-bit plaintext.
+4. Apply IP.
+5. Split into two 4-bit halves.
+6. First Feistel round using K1.
+7. Swap halves.
+8. Second Feistel round using K2.
+9. Apply IP^-1.
+10. Obtain ciphertext.
+
+==================================================
+3. DES VS S-DES — COMPARISON
+==================================================
+
+Characteristic       DES             S-DES
+--------------------------------------------------
+Block size           64 bits         8 bits
+Original key size    64 bits         10 bits
+Effective key size   56 bits         10 bits
+Rounds               16              2
+Structure            Feistel         Feistel
+Round keys           16 x 48 bits    2 x 8 bits
+Purpose              Historical      Education
+Security             Obsolete        Insecure
+
+==================================================
+4. IMPORTANT EXAM QUESTIONS
+==================================================
+
+Q: Why does DES have a 64-bit key but only 56 effective bits?
+
+A: Because 8 bits are used for parity checking.
+   The remaining 56 bits are used for encryption.
+
+Q: Why can DES use the same algorithm for encryption
+   and decryption?
+
+A: Because it uses a Feistel network.
+   Decryption simply applies the round keys in reverse order.
+
+Q: What is the purpose of S-boxes?
+
+A: They perform nonlinear substitution and introduce
+   confusion into the cipher.
+
+Q: What is the difference between IP and IP^-1?
+
+A: IP rearranges plaintext bits at the beginning.
+   IP^-1 reverses that rearrangement at the end.
+
+Q: What is the difference between P10 and P8 in S-DES?
+
+A: P10 rearranges all 10 key bits.
+   P8 selects and rearranges 8 bits to generate
+   a round key.
+
+Q: What is the difference between DES and S-DES?
+
+A: DES is a 16-round block cipher with a 56-bit
+   effective key, while S-DES is a simplified
+   two-round educational version with a 10-bit key.
+
+Q: What is the main similarity between DES and S-DES?
+
+A: Both use a Feistel network. Their encryption and
+   decryption structures are identical; only the
+   order of round keys changes.
+
+==================================================
+5. MOST IMPORTANT THINGS TO REMEMBER
+==================================================
+
+DES:
+- 64-bit block.
+- 56-bit effective key.
+- 16 rounds.
+- 16 round keys of 48 bits.
+- PC-1 -> shifts -> PC-2.
+- IP -> 16 rounds -> swap -> IP^-1.
+- Decryption uses reversed round keys.
+
+S-DES:
+- 8-bit block.
+- 10-bit key.
+- 2 rounds.
+- 2 round keys of 8 bits.
+- P10 -> LS-1 -> P8 = K1.
+- LS-2 -> P8 = K2.
+- IP -> K1 round -> swap -> K2 round -> IP^-1.
+- Decryption uses K2 first, then K1.
+
+BOTH:
+- Symmetric block ciphers.
+- Based on Feistel networks.
+- Use the same structure for encryption and decryption.
+- Round keys are applied in reverse order during decryption.
+```
