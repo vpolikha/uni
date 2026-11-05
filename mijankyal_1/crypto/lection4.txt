@@ -1,0 +1,752 @@
+### CRYPTOLOGY CHEATSHEET — PART 3
+
+This part covers hash functions, key exchange (Diffie–Hellman), public-key cryptosystems, RSA, symmetric-key authentication, and digital signatures.
+
+A few terminology corrections first:
+
+* Diffie–Hellman — key exchange algorithm.
+
+* Public-key systems — asymmetric cryptography.
+
+* Symmetric algorithms for authentication — most likely message authentication using MAC/HMAC.
+
+* Թվային ստորագրություն — Digital Signature.
+
+Let's go through them one by one.
+
+### 1\. HASH FUNCTIONS
+
+Definition:
+
+A cryptographic hash function takes input data of arbitrary length and produces a fixed-length output called a hash or digest.
+
+Example:
+
+```text
+Input:  Hello
+Hash:   185f8db32271fe25...
+```
+
+Even a very small change in the input should produce a completely different hash.
+
+Properties:
+
+* Deterministic: the same input always produces the same hash.
+
+* Fixed output length: regardless of input size.
+
+* Preimage resistance: given a hash, it should be computationally infeasible to find an input that produces it.
+
+* Second-preimage resistance: given an input, it should be infeasible to find a different input with the same hash.
+
+* Collision resistance: it should be infeasible to find any two different inputs with the same hash.
+
+* Avalanche effect: a small input change should cause a substantial, unpredictable change in the output.
+
+Example:
+
+```text
+Hash("HELLO") = A94A8FE5...
+Hash("HELLo") = 3F2A91C7...
+```
+
+Illustrative hashes; not actual digest values.
+
+Key:
+
+* Ordinary cryptographic hash functions do not use a secret key.
+
+* They are publicly computable.
+
+Algorithm:
+
+* Take input of arbitrary length.
+
+* Process it through the hash function.
+
+* Produce a fixed-size digest.
+
+Uses:
+
+* File integrity verification.
+
+* Password storage (with dedicated password-hashing algorithms).
+
+* Digital signatures.
+
+* Message authentication when combined with a key (HMAC).
+
+Weaknesses and limitations:
+
+* Hashing does not encrypt data.
+
+* Hashes are not reversible.
+
+* Collisions are mathematically possible because arbitrary-length inputs map to fixed-length outputs.
+
+* Ordinary hashes do not authenticate who created the data.
+
+Examples:
+
+* SHA-256 — secure and widely used.
+
+* SHA-3 — secure hash standard.
+
+* MD5 — broken for collision resistance.
+
+* SHA-1 — broken for collision resistance.
+
+Important: passwords should generally be stored using Argon2id, scrypt, bcrypt, or PBKDF2 rather than a fast hash such as SHA-256 alone.
+
+### 2\. KEY EXCHANGE — DIFFIE–HELLMAN
+
+Definition:
+
+Diffie–Hellman (DH) is a key exchange algorithm that allows two parties to establish a shared secret over an insecure communication channel.
+
+The important idea: both parties calculate the same secret without directly sending that secret to each other.
+
+It is not an encryption algorithm. It establishes a shared key that can later be used by symmetric encryption.
+
+Public parameters:
+
+* — a large prime number.
+
+* — a generator.
+
+These parameters are public.
+
+Algorithm:
+
+* Alice chooses a private random number .
+
+* Bob chooses a private random number .
+
+* Alice calculates:
+
+A=g^a \\bmod p
+
+4\. Bob calculates:
+
+B=g^b \\bmod p
+
+* They exchange and publicly.
+
+* Alice calculates:
+
+S=B^a \\bmod p
+
+7\. Bob calculates:
+
+S=A^b \\bmod p
+
+Both obtain the same shared secret:
+
+S=g^{ab}\\bmod p
+
+Small example:
+
+For demonstration, use:
+
+```text
+p = 23
+g = 5
+```
+
+Alice:
+
+```text
+Private key a = 6
+Public value A = 5^6 mod 23 = 8
+```
+
+Bob:
+
+```text
+Private key b = 15
+Public value B = 5^15 mod 23 = 19
+```
+
+They exchange public values:
+
+```text
+Alice receives B = 19
+Bob receives A = 8
+```
+
+Alice calculates:
+
+```text
+S = 19^6 mod 23 = 2
+```
+
+Bob calculates:
+
+```text
+S = 8^15 mod 23 = 2
+```
+
+Shared secret = 2
+
+Neither Alice nor Bob sent the number 2 over the network.
+
+Advantages:
+
+* Establishes a shared secret over an insecure channel.
+
+* The secret itself is never transmitted.
+
+* Can provide forward secrecy when ephemeral keys are used.
+
+Weaknesses:
+
+* Vulnerable to a Man-in-the-Middle attack if not authenticated.
+
+* Requires sufficiently strong parameters and secure implementation.
+
+* Does not directly encrypt messages or authenticate the participants.
+
+Main security principle:
+
+It is computationally difficult to calculate the private exponent from the public value:
+
+A=g^a\\bmod p
+
+This is related to the discrete logarithm problem.
+
+### 3\. PUBLIC-KEY SYSTEMS (ASYMMETRIC CRYPTOGRAPHY)
+
+Definition:
+
+A public-key cryptosystem uses two mathematically related keys:
+
+* Public key: Can be shared openly with everyone.
+
+* Private key: Must remain secret and belongs to its owner.
+
+The keys are related mathematically, but deriving the private key from the public key must be computationally infeasible.
+
+There are two major uses.
+
+A. Encryption — confidentiality
+
+Suppose Alice wants to send a secret message to Bob.
+
+* Bob generates a public/private key pair.
+
+* Bob sends his public key to Alice.
+
+* Alice encrypts the message using Bob's public key.
+
+* Alice sends the ciphertext to Bob.
+
+* Bob decrypts it using his private key.
+
+```text
+ALICE                         BOB
+
+Message
+   |
+   | Encrypt with Bob's
+   | public key
+   v
+Ciphertext -----------------> Ciphertext
+                                  |
+                                  | Decrypt with
+                                  | private key
+                                  v
+                               Message
+```
+
+B. Digital signature — authenticity
+
+* Alice creates a message.
+
+* Alice signs it using her private key.
+
+* Alice sends the message and signature to Bob.
+
+* Bob verifies the signature using Alice's public key.
+
+```text
+ALICE                         BOB
+
+Message                       Message
+   |                             |
+   | Sign with                   | Verify with
+   | private key                 | Alice's public key
+   v                             v
+Signature -----------------> Verification
+```
+
+Advantages:
+
+* Solves the problem of distributing a shared secret encryption key.
+
+* Supports digital signatures.
+
+* Public keys can be distributed openly.
+
+Weaknesses:
+
+* Generally slower than symmetric encryption.
+
+* Requires reliable public-key identification (otherwise an attacker can substitute their own public key).
+
+* Private keys must be protected.
+
+Examples:
+
+* RSA
+
+* ECC (Elliptic Curve Cryptography)
+
+* ElGamal
+
+* Diffie–Hellman (key exchange, not itself an encryption system)
+
+Important:
+
+Asymmetric cryptography is often combined with symmetric cryptography:
+
+* Use public-key cryptography to establish or protect a session key.
+
+* Use symmetric encryption to encrypt the actual data.
+
+This is called hybrid encryption.
+
+### 4\. RSA ALGORITHM
+
+Definition:
+
+RSA is an asymmetric cryptographic algorithm based on the mathematical difficulty of factoring a large number into its prime factors.
+
+RSA supports encryption and digital signatures.
+
+### Key generation
+
+1\. Choose two large prime numbers:
+
+p,\\ q
+
+2\. Calculate:
+
+n=pq
+
+3\. Calculate Euler's totient:
+
+\\varphi(n)=(p-1)(q-1)
+
+4\. Choose a public exponent , such that:
+
+1<e<\\varphi(n)
+
+and
+
+gcd(e,\\varphi(n))=1
+
+5\. Calculate the private exponent :
+
+d=e^{-1}\\bmod \\varphi(n)
+
+This means:
+
+ed\\bmod\\varphi(n)=1
+
+Keys:
+
+```text
+Public key:  (e, n)
+Private key: (d, n)
+```
+
+### Encryption
+
+The sender encrypts the message using the recipient's public key:
+
+C=M^e\\bmod n
+
+### Decryption
+
+The recipient decrypts using their private key:
+
+M=C^d\\bmod n
+
+### Small numerical example
+
+For demonstration, choose:
+
+```text
+p = 61
+q = 53
+```
+
+Calculate:
+
+```text
+n = 61 × 53 = 3233
+
+φ(n) = 60 × 52 = 3120
+```
+
+Choose:
+
+```text
+e = 17
+```
+
+Calculate the private exponent:
+
+```text
+d = 2753
+```
+
+Because:
+
+```text
+17 × 2753 mod 3120 = 1
+```
+
+We now have:
+
+```text
+Public key:  (17, 3233)
+Private key: (2753, 3233)
+```
+
+Suppose our message is:
+
+```text
+M = 65
+```
+
+Encryption:
+
+C=65^{17}\\bmod3233=2790
+
+Decryption:
+
+M=2790^{2753}\\bmod3233=65Original message recovered: 65
+
+### Advantages
+
+* Supports public-key encryption.
+
+* Supports digital signatures.
+
+* Does not require sharing the private key.
+
+* Security is based on the difficulty of factoring sufficiently large numbers.
+
+### Weaknesses
+
+* Slower than symmetric algorithms.
+
+* Vulnerable if keys are too small or poorly generated.
+
+* Basic textbook RSA is insecure; secure padding schemes are required.
+
+* Private key compromise destroys security.
+
+Important padding schemes:
+
+* RSA-OAEP — encryption.
+
+* RSA-PSS — digital signatures.
+
+Main idea:
+
+```text
+Encryption: M^e mod n
+Decryption: C^d mod n
+
+Public key:  (e, n)
+Private key: (d, n)
+```
+
+### 5\. SYMMETRIC ALGORITHMS FOR AUTHENTICATION — MAC AND HMAC
+
+I believe this is what your lecture means by symmetric algorithms for authentication.
+
+Definition:
+
+A Message Authentication Code (MAC) is a value generated from a message and a shared secret key.
+
+It allows the receiver to verify:
+
+* Message integrity — the message was not modified.
+
+* Message authenticity — the message was generated by someone possessing the shared secret key.
+
+Unlike an ordinary hash function, a MAC uses a secret key.
+
+### MAC algorithm
+
+Alice and Bob share the same secret key .
+
+* Alice takes her message.
+
+* Alice calculates a MAC using the message and secret key.
+
+* Alice sends both the message and MAC.
+
+* Bob calculates a new MAC using the received message and the same key.
+
+* Bob compares the received MAC with the calculated MAC.
+
+Example:
+
+```text
+Shared key: SECRET123
+Message:    Transfer 100
+
+Alice calculates:
+
+MAC = MAC(SECRET123, "Transfer 100")
+
+Alice sends:
+
+Message: Transfer 100
+MAC:     ABC123...
+```
+
+Bob receives the message and calculates its MAC independently.
+
+```text
+Received MAC:   ABC123...
+Calculated MAC: ABC123...
+
+They match -> Message is authenticated.
+```
+
+If an attacker modifies the message:
+
+```text
+Original:  Transfer 100
+Modified:  Transfer 900
+```
+
+The calculated MAC will not match the original MAC, assuming a secure MAC construction.
+
+### HMAC
+
+HMAC (Hash-based Message Authentication Code) is a specific type of MAC that uses a cryptographic hash function and a secret key.
+
+For example, HMAC-SHA256 uses SHA-256.
+
+Formula:
+
+HMAC(K,m)=H((K'\\oplus opad)\\ \\|\\ H((K'\\oplus ipad)\\ \\|\\ m))
+
+Where:
+
+* — secret key.
+
+* — message.
+
+* — hash function.
+
+* , — predefined padding constants.
+
+* — concatenation.
+
+You generally don't need to memorize the internal formula unless your lecturer specifically requires it.
+
+Advantages:
+
+* Detects message modification.
+
+* Provides message authentication.
+
+* Efficient compared with asymmetric signatures.
+
+* Uses existing hash functions.
+
+Weaknesses:
+
+* Both parties must share the same secret key.
+
+* Anyone possessing the shared key can generate valid MACs.
+
+* Does not provide non-repudiation: you cannot prove which of the two key holders generated the message.
+
+Examples:
+
+* HMAC-SHA256
+
+* HMAC-SHA512
+
+* CMAC (based on a block cipher such as AES)
+
+Main idea:
+
+```text
+Ordinary hash:
+    Hash = H(Message)
+
+MAC:
+    MAC = MAC(Secret key, Message)
+
+HMAC:
+    HMAC = HMAC(Secret key, Message)
+```
+
+### 6\. DIGITAL SIGNATURE (Թվային ստորագրություն)
+
+Definition:
+
+A digital signature is a cryptographic mechanism that allows the receiver to verify the authenticity and integrity of a message and provides evidence that it was signed using a particular private key.
+
+It uses asymmetric cryptography.
+
+Unlike MAC, the sender uses a private key to sign, and anyone with the corresponding public key can verify.
+
+### Key generation
+
+The sender generates a key pair:
+
+```text
+Public key:  Available to everyone.
+Private key: Kept secret by the sender.
+```
+
+### Signing algorithm
+
+* Alice creates a message.
+
+* Alice calculates the hash of the message.
+
+* Alice signs the hash using her private key.
+
+* Alice sends the message and digital signature to Bob.
+
+Conceptually:
+
+h=H(M)S=Sign_{PrivateKey}(h)
+
+### Verification algorithm
+
+* Bob receives the message and signature.
+
+* Bob calculates the hash of the received message.
+
+* Bob verifies the signature using Alice's public key.
+
+* If verification succeeds, the signature is valid for that message and public key.
+
+Conceptually:
+
+h_1=H(M)h_2=Verify_{PublicKey}(S)
+
+If the signature verification succeeds and the recovered/verified digest corresponds to , the message is considered valid.
+
+![How do digital signatures work? | Anvil E-signatures](https://images.openai.com/static-rsc-4/TyQ9CKQzKGBXMCVydKXRmz6ffBUgZyaFkSSffJCLG7gX47zYTVPsAVLsK-oX7BQ4YsRTKTiefVYJUkEB_B3TuYrgeawrV2n9ye7A1k_NxrLrpZKjep8FLWzjBAVvBcifAv79iaJGUS9npGOop2u-BwbP1W4lTU8BksvStFlVkCqiRw1KkRnu6-lAvkf8rAf_?purpose=fullsize)
+
+### Example
+
+Alice wants to send:
+
+```text
+Message: Transfer 100
+```
+
+She calculates its hash:
+
+```text
+Hash = ABC123...
+```
+
+She signs the hash with her private key:
+
+```text
+Signature = Sign(PrivateKey, ABC123...)
+```
+
+Bob receives:
+
+```text
+Message:   Transfer 100
+Signature: ...
+```
+
+Bob verifies the signature using Alice's public key.
+
+If someone changes the message:
+
+```text
+Original: Transfer 100
+Modified: Transfer 900
+```
+
+The hash changes, so verification fails.
+
+### Advantages
+
+* Provides integrity.
+
+* Provides authentication of the signing key.
+
+* Supports non-repudiation when identity and key ownership are properly established.
+
+* Public key can be used by many receivers to verify signatures.
+
+### Weaknesses
+
+* Requires secure private-key storage.
+
+* Public-key authenticity must be established.
+
+* More computationally expensive than symmetric MACs.
+
+* Does not encrypt the message: anyone can read it unless encryption is also used.
+
+Examples:
+
+* RSA-PSS
+
+* ECDSA
+
+* Ed25519
+
+Main idea:
+
+```text
+SIGNING:
+    Hash message.
+    Sign hash using private key.
+
+VERIFICATION:
+    Verify signature using public key.
+    Check that the signature corresponds to the message.
+
+Private key = signing.
+Public key  = verification.
+```
+
+### 7\. FINAL COMPARISON
+
+| Mechanism             | Key type              | Main purpose                                      |
+| --------------------- | --------------------- | ------------------------------------------------- |
+| Hash function         | No key                | Integrity checking (not authentication by itself) |
+| Diffie–Hellman        | Private/public values | Shared secret establishment                       |
+| Public-key encryption | Public/private        | Confidentiality                                   |
+| RSA                   | Public/private        | Encryption and signatures                         |
+| MAC                   | Shared secret         | Integrity and authentication                      |
+| HMAC                  | Shared secret + hash  | Integrity and authentication                      |
+| Digital signature     | Private/public        | Integrity, authenticity, non-repudiation          |
+
+### 8\. The most important distinctions for the exam
+
+* Hash vs MAC: Hash uses no secret key; MAC uses a shared secret key.
+
+* MAC vs digital signature: MAC uses one shared key; digital signatures use a private/public key pair.
+
+* Diffie–Hellman vs RSA: Diffie–Hellman establishes a shared secret; RSA supports encryption and digital signatures.
+
+* Encryption vs digital signature: Encryption protects confidentiality; signatures provide authenticity and integrity.
+
+* Public key vs private key: Public key can be distributed; private key must remain secret.
+
+One last important distinction: a digital signature proves that a signature was produced using the corresponding private key, but it identifies a real person only if that public key is reliably associated with that person's identity (for example, through a trusted certificate authority).
+
+Exam tip: Pay particular attention to the difference between Diffie–Hellman, RSA, HMAC, and digital signatures. They are easy to confuse because they all involve keys, but they solve different problems.
