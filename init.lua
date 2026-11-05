@@ -21,6 +21,11 @@ vim.opt.smartindent = true
 -- Auto-open file explorer on startup
 vim.api.nvim_create_autocmd("VimEnter", {
     callback = function()
-        vim.cmd(":Vexplore")
+        vim.cmd(":Lexplore")
     end,
 })
+
+-- Open new window (v) to the right of the current one
+vim.opt.splitright = true
+
+vim.keymap.set("n", "tt", "<cmd>vsplit<CR><cmd>terminal<CR><C-w>J")
