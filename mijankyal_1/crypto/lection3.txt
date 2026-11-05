@@ -1,0 +1,547 @@
+Let's continue the previous cryptology cheatsheet. This part covers everything we discussed after it: perfect secrecy, stream and block ciphers, ECB, CBC, PCBC, CFB and OFB.
+
+### CRYPTOLOGY CHEATSHEET — PART 2
+
+```text
+============================================================
+1. PERFECT SECRECY (COMPLETE SECRECY)
+============================================================
+
+DEFINITION:
+Perfect secrecy means that observing ciphertext gives an
+attacker absolutely no information about the plaintext.
+
+Even an attacker with unlimited computational power cannot
+learn anything about the original message from the ciphertext.
+
+MATHEMATICAL DEFINITION:
+
+P(M | C) = P(M)
+
+The probability of a plaintext message M remains unchanged
+after observing ciphertext C.
+
+ONE-TIME PAD (OTP):
+
+The classic example of perfect secrecy.
+
+KEY:
+    A truly random key, at least as long as the plaintext.
+    The key must remain secret and must be used only once.
+
+ENCRYPTION:
+    C = P XOR K
+
+DECRYPTION:
+    P = C XOR K
+
+EXAMPLE:
+
+    Plaintext:  10110010
+    Key:        01101001
+                --------
+    Ciphertext: 11011011
+
+    Decryption:
+
+    Ciphertext: 11011011
+    Key:        01101001
+                --------
+    Plaintext:  10110010
+
+REQUIREMENTS:
+    1. Key must be truly random.
+    2. Key must be at least as long as the message.
+    3. Key must remain secret.
+    4. Key must never be reused.
+    5. Key must be securely distributed.
+
+ADVANTAGES:
+    - Perfect secrecy.
+    - Impossible to break using brute force or statistical
+      analysis of ciphertext alone, under the requirements.
+
+WEAKNESSES:
+    - Key generation and distribution are difficult.
+    - Key storage requires as much space as the message.
+    - Reusing a key compromises security.
+
+IMPORTANT:
+    Perfect secrecy is information-theoretic security.
+    Computational security only makes attacks impractical
+    with available resources.
+
+    Encryption alone does not guarantee integrity or
+    authentication.
+
+============================================================
+2. STREAM CIPHERS
+============================================================
+
+DEFINITION:
+A stream cipher encrypts data one bit or one byte at a time
+using a generated pseudorandom sequence called a keystream.
+
+KEY:
+    Secret key used to initialize the cipher.
+
+ENCRYPTION:
+    Generate a keystream K.
+    XOR plaintext with the keystream.
+
+    C = P XOR K
+
+DECRYPTION:
+    Generate the same keystream K.
+    XOR ciphertext with the keystream.
+
+    P = C XOR K
+
+EXAMPLE:
+
+    Plaintext:  10110010
+    Keystream:  01101001
+                --------
+    Ciphertext: 11011011
+
+ADVANTAGES:
+    - Fast.
+    - Suitable for continuous data transmission.
+    - No padding required.
+    - Can process data of arbitrary length.
+
+WEAKNESSES:
+    - Reusing a keystream can compromise security.
+    - Security depends on the quality of keystream generation.
+    - Basic stream encryption does not provide authentication.
+
+EXAMPLES:
+    ChaCha20, Salsa20, RC4 (obsolete and insecure).
+
+IMPORTANT:
+    Never reuse the same keystream with different plaintexts.
+
+============================================================
+3. BLOCK CIPHERS
+============================================================
+
+DEFINITION:
+A block cipher encrypts data in fixed-size blocks.
+
+Example:
+    AES uses blocks of exactly 128 bits (16 bytes).
+
+KEY:
+    Secret key shared between sender and receiver.
+
+ENCRYPTION:
+    Divide plaintext into fixed-size blocks.
+    Encrypt each block using the key.
+
+    C[i] = E(K, P[i])
+
+DECRYPTION:
+    Decrypt each ciphertext block.
+
+    P[i] = D(K, C[i])
+
+ADVANTAGES:
+    - Suitable for files and large amounts of data.
+    - Strong security when used with an appropriate mode.
+    - Can be used in different modes of operation.
+
+WEAKNESSES:
+    - Requires a mode of operation for messages longer
+      than one block.
+    - Some modes require padding.
+    - Security depends on correct mode selection and use.
+
+EXAMPLES:
+    AES, DES (obsolete), 3DES (deprecated).
+
+IMPORTANT:
+    A block cipher encrypts only fixed-size blocks.
+    Modes of operation define how multiple blocks are handled.
+
+============================================================
+4. ELECTRONIC CODEBOOK (ECB)
+============================================================
+
+DEFINITION:
+ECB is the simplest block cipher mode.
+
+Each plaintext block is encrypted independently using
+the same secret key.
+
+KEY:
+    Secret key shared between sender and receiver.
+
+    Example: AES-128 uses a 128-bit key.
+
+IV:
+    Not required.
+
+ENCRYPTION:
+
+    C[i] = E(K, P[i])
+
+    Each block is encrypted independently.
+
+DECRYPTION:
+
+    P[i] = D(K, C[i])
+
+PADDING:
+    Required if the message length is not a multiple
+    of the block size (depending on the padding scheme).
+
+ADVANTAGES:
+    - Simple.
+    - Fast.
+    - Encryption and decryption can be parallelized.
+    - Errors do not propagate between blocks.
+
+WEAKNESSES:
+    - Identical plaintext blocks produce identical ciphertext.
+    - Reveals patterns in the original message.
+    - Blocks can be rearranged, replaced or deleted.
+    - No integrity or authentication.
+
+SECURITY:
+    Not recommended for encrypting multi-block messages.
+
+MAIN IDEA:
+    Same plaintext block + same key = same ciphertext block.
+
+============================================================
+5. CIPHER BLOCK CHAINING (CBC)
+============================================================
+
+DEFINITION:
+Each plaintext block is XORed with the previous ciphertext
+block before encryption.
+
+The first block uses an Initialization Vector (IV).
+
+KEY:
+    Secret key shared between sender and receiver.
+
+IV:
+    Random and unpredictable.
+    Same size as the cipher block.
+    Does not need to be secret.
+
+ENCRYPTION:
+
+    C[1] = E(K, P[1] XOR IV)
+
+    C[i] = E(K, P[i] XOR C[i-1])
+
+DECRYPTION:
+
+    P[1] = D(K, C[1]) XOR IV
+
+    P[i] = D(K, C[i]) XOR C[i-1]
+
+PADDING:
+    Required when the message length is not a multiple
+    of the block size.
+
+ADVANTAGES:
+    - Hides the repeated-block patterns of ECB.
+    - Each ciphertext block depends on the previous block.
+    - Decryption can be parallelized.
+
+WEAKNESSES:
+    - Encryption is sequential.
+    - Requires padding.
+    - Errors in ciphertext affect multiple plaintext blocks.
+    - No integrity or authentication.
+    - Can be vulnerable to padding-oracle attacks if
+      implemented incorrectly.
+
+MAIN IDEA:
+    Current plaintext XOR previous ciphertext,
+    then encrypt.
+
+============================================================
+6. PROPAGATING CIPHER BLOCK CHAINING (PCBC)
+============================================================
+
+DEFINITION:
+Each plaintext block is combined with both the previous
+plaintext block and the previous ciphertext block.
+
+KEY:
+    Secret key shared between sender and receiver.
+
+IV:
+    Initialization Vector, same size as a block.
+
+ENCRYPTION:
+
+    C[1] = E(K, P[1] XOR IV)
+
+    C[i] = E(K, P[i] XOR P[i-1] XOR C[i-1])
+
+DECRYPTION:
+
+    P[1] = D(K, C[1]) XOR IV
+
+    P[i] = D(K, C[i]) XOR P[i-1] XOR C[i-1]
+
+PADDING:
+    Required when the message length is not a multiple
+    of the block size.
+
+ADVANTAGES:
+    - Changes in plaintext can propagate to subsequent
+      ciphertext blocks.
+    - Designed to propagate errors and modifications.
+
+WEAKNESSES:
+    - Error propagation makes recovery difficult.
+    - Does not provide authentication or integrity.
+    - Has structural weaknesses, including the possibility
+      of certain block manipulations.
+    - Rarely used in modern cryptographic systems.
+
+MAIN IDEA:
+    Current plaintext XOR previous plaintext XOR
+    previous ciphertext, then encrypt.
+
+============================================================
+7. CIPHER FEEDBACK (CFB)
+============================================================
+
+DEFINITION:
+CFB turns a block cipher into a stream-like cipher.
+
+Instead of XORing plaintext with previous ciphertext
+before encryption, it encrypts the previous ciphertext
+and then XORs the result with the current plaintext.
+
+KEY:
+    Secret key shared between sender and receiver.
+
+IV:
+    Must be unpredictable for standard CFB use.
+
+ENCRYPTION:
+
+    C[1] = P[1] XOR E(K, IV)
+
+    C[i] = P[i] XOR E(K, C[i-1])
+
+DECRYPTION:
+
+    P[1] = C[1] XOR E(K, IV)
+
+    P[i] = C[i] XOR E(K, C[i-1])
+
+IMPORTANT:
+    Both encryption and decryption use E(K, ...).
+    The block cipher's decryption function D(K, ...) is
+    NOT required.
+
+PADDING:
+    Not required. CFB can process smaller segments,
+    depending on its configuration.
+
+ADVANTAGES:
+    - Stream-like encryption.
+    - No padding required.
+    - Can process data in smaller segments.
+    - Uses the encryption function for both operations.
+
+WEAKNESSES:
+    - Encryption is sequential.
+    - Ciphertext errors affect subsequent plaintext segments.
+    - No integrity or authentication.
+    - IV reuse can compromise security.
+
+MAIN IDEA:
+    Encrypt previous ciphertext, then XOR with plaintext.
+
+============================================================
+8. OUTPUT FEEDBACK (OFB)
+============================================================
+
+DEFINITION:
+OFB turns a block cipher into a stream-like cipher.
+
+Unlike CFB, it feeds the previous encryption OUTPUT
+back into the encryption process, not the ciphertext.
+
+KEY:
+    Secret key shared between sender and receiver.
+
+IV:
+    Must never be reused with the same key.
+
+KEYSTREAM GENERATION:
+
+    O[1] = E(K, IV)
+
+    O[i] = E(K, O[i-1])
+
+ENCRYPTION:
+
+    C[i] = P[i] XOR O[i]
+
+DECRYPTION:
+
+    P[i] = C[i] XOR O[i]
+
+PADDING:
+    Not required.
+
+ADVANTAGES:
+    - No padding required.
+    - Ciphertext bit errors affect only corresponding
+      plaintext bits.
+    - Keystream can be generated in advance.
+    - Uses the encryption function for both operations.
+
+WEAKNESSES:
+    - Reusing an IV with the same key repeats the keystream.
+    - Keystream generation is sequential.
+    - No integrity or authentication.
+
+MAIN IDEA:
+    Encrypt previous encryption output,
+    then XOR with plaintext.
+
+============================================================
+9. COMPARISON OF STREAM AND BLOCK CIPHERS
+============================================================
+
+STREAM CIPHER:
+    - Processes bits or bytes continuously.
+    - Generates a pseudorandom keystream.
+    - Combines plaintext and keystream using XOR.
+    - No padding required.
+    - Examples: ChaCha20, Salsa20.
+
+BLOCK CIPHER:
+    - Processes fixed-size blocks.
+    - Uses a block encryption function.
+    - Requires a mode of operation for longer messages.
+    - Padding depends on the mode.
+    - Examples: AES, DES.
+
+============================================================
+10. COMPARISON OF BLOCK CIPHER MODES
+============================================================
+
+ECB:
+    Encrypts every plaintext block independently.
+    No IV.
+    Reveals repeated patterns.
+
+CBC:
+    XOR current plaintext with previous ciphertext.
+    Uses IV.
+    Encryption is sequential.
+
+PCBC:
+    XOR current plaintext with previous plaintext
+    and previous ciphertext.
+    Uses IV.
+    Propagates changes.
+
+CFB:
+    Encrypt previous ciphertext.
+    XOR result with current plaintext.
+    Uses IV.
+    Stream-like mode.
+
+OFB:
+    Encrypt previous encryption output.
+    XOR result with current plaintext.
+    Uses IV.
+    Stream-like mode.
+
+============================================================
+11. IMPORTANT XOR RULES
+============================================================
+
+XOR (exclusive OR):
+
+    0 XOR 0 = 0
+    0 XOR 1 = 1
+    1 XOR 0 = 1
+    1 XOR 1 = 0
+
+EXAMPLE:
+
+    1010
+    1100
+    ----
+    0110
+
+IMPORTANT PROPERTIES:
+
+    A XOR 0 = A
+
+    A XOR A = 0
+
+    A XOR B XOR B = A
+
+XOR is reversible:
+
+    C = P XOR K
+
+    P = C XOR K
+
+============================================================
+12. AUTHENTICATION AND INTEGRITY
+============================================================
+
+IMPORTANT:
+Encryption does not automatically guarantee that ciphertext
+has not been modified.
+
+CONFIDENTIALITY:
+    Prevents unauthorized reading of information.
+
+INTEGRITY:
+    Ensures information has not been modified.
+
+AUTHENTICATION:
+    Verifies the identity of the sender or the origin
+    of the message.
+
+Modern authenticated encryption examples:
+
+    AES-GCM
+    ChaCha20-Poly1305
+
+These provide confidentiality and authentication together.
+
+============================================================
+END OF PART 2
+============================================================
+```
+
+### A final mental model to remember
+
+The easiest way to distinguish all these modes is to remember what gets fed back into the next encryption operation:
+
+| Mode | What is fed back?               |
+| ---- | ------------------------------- |
+| ECB  | Nothing                         |
+| CBC  | Previous ciphertext             |
+| PCBC | Previous plaintext + ciphertext |
+| CFB  | Previous ciphertext             |
+| OFB  | Previous encryption output      |
+
+And one particularly important distinction:
+
+* CBC: XOR first, then encrypt.
+
+* CFB: Encrypt first, then XOR with plaintext.
+
+* OFB: Generate a keystream independently of plaintext and ciphertext, then XOR.
+
+That's the core of this entire lecture.
