@@ -1,0 +1,33 @@
+1) cc unix_stream_server.c -o uss
+cc unix_stream_client.C -o usc
+(terminal A)
+./usc
+aaa
+(terminal B)
+./usc
+aaa
+meaning:
+client-server vorking
+2) in unix_stream_server.c:
+// if (remove(SV_SOCK_PATH) == -1 && errno != ENOENT) {
+//     fprintf(stderr, "remove-%s error", SV_SOCK_PATH);
+//     exit(EXIT_FAILURE);
+// }
+./uss
+Address already in use
+Meaning:
+Can't bind to a socket file that is already in use
+
+Delete the socket
+./uss
+(working normal)
+3) cc unix_datagram_server.c -o uds
+cc unix_datagram_client.c -o udc
+(terminal A) ./uds
+(terminal B) ./udc "long message"
+(terminal A) Server received 10 bytes from /tmp/ud_ucase_cl.5774
+Meaning:
+#define BUF_SIZE 10
+limits the length
+4) echo.c
+5) chatroom.c
