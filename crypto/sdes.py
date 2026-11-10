@@ -5,6 +5,10 @@
 class SDES:
 
     def __init__(self, key: list[int]) -> None:
+        if len(key) != 10:
+            print("Invalid key length!")
+            return None
+
         self.__key = key
 
         self.__P10 = [3, 5, 2, 7, 4, 10, 1, 9, 8, 6]
