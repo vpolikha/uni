@@ -1,0 +1,29 @@
+1) cc ipv4_dg_client.c -o c4
+cc ipv4_dg_server.c -o s4
+
+(Terminal A)
+./s4
+
+(Terminal B)
+./c4 127.0.0.1 privet
+Responce 1: PRIVET
+
+(Terminal A)
+Server received 6 bytes from (127.0.0.1, 51823)
+2) cc ipv6_dg_client.c -o c6
+cc ipv6_dg_server.c -o s6
+
+(Terminal A)
+./s6
+
+(Terminal B)
+./c6 ::1 privet
+Responce 1: PRIVET
+
+(Terminal A)
+Server received 6 bytes from (::1, 46724)
+
+3) echo.c
+4) chatroom.c
+
+
