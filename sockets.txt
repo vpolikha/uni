@@ -1,0 +1,906 @@
+SOCKETS — CHEAT SHEET
+
+1. WHAT IS A SOCKET?
+
+A socket is an endpoint for communication between two processes.
+
+It provides an interface through which processes can exchange data.
+
+Sockets can be used for:
+
+- Communication between processes on the same machine (IPC).
+- Communication between processes on different machines over a network.
+
+A socket is represented by a file descriptor (an integer) in Unix-like operating systems.
+
+Basic socket operations:
+
+- Create a socket.
+- Assign an address to it (if necessary).
+- Establish or accept a connection (depending on the socket type).
+- Send and receive data.
+- Close the socket.
+
+A socket is NOT a file, although Unix-like systems expose it through a file descriptor and allow many file-descriptor operations on it.
+
+---
+
+2. SOCKET CLASSIFICATION
+
+A socket is characterized by several properties:
+
+1. Address family (domain) — determines the addressing system.
+2. Socket type — determines the communication model.
+3. Protocol — determines the communication protocol.
+
+Address families (domains)
+
+AF_UNIX
+
+- Unix domain sockets.
+- Communication between processes on the same machine.
+- Uses filesystem paths as addresses (pathname sockets).
+- Does not require IP addresses or network ports.
+
+AF_INET
+
+- IPv4 Internet domain.
+- Uses IPv4 addresses and port numbers.
+
+AF_INET6
+
+- IPv6 Internet domain.
+- Uses IPv6 addresses and port numbers.
+
+Socket types
+
+SOCK_STREAM
+
+- Provides a reliable, ordered, full-duplex byte stream.
+- Does not preserve message boundaries.
+- Commonly used with TCP (AF_INET / AF_INET6).
+- Also available for local communication (AF_UNIX).
+
+SOCK_DGRAM
+
+- Transfers independent datagrams (messages).
+- Preserves message boundaries.
+- Does not establish a connection in the usual sense.
+- Does not guarantee delivery, ordering, or duplicate protection.
+- Commonly used with UDP (AF_INET / AF_INET6).
+- Also available for local communication (AF_UNIX).
+
+Common combinations
+
+AF_UNIX + SOCK_STREAM = local stream communication.
+
+AF_UNIX + SOCK_DGRAM = local datagram communication.
+
+AF_INET + SOCK_STREAM = TCP over IPv4.
+
+AF_INET + SOCK_DGRAM = UDP over IPv4.
+
+AF_INET6 + SOCK_STREAM = TCP over IPv6.
+
+AF_INET6 + SOCK_DGRAM = UDP over IPv6.
+
+The address family determines HOW endpoints are addressed.
+The socket type determines HOW data is exchanged.
+
+---
+
+3. STREAM SOCKETS
+
+General principle
+
+A stream socket provides a continuous, ordered stream of bytes between two connected endpoints.
+
+Important properties:
+
+- Reliable delivery (for TCP and Unix domain stream sockets).
+- Data arrives in the order it was sent.
+- Full-duplex communication: both endpoints can send and receive simultaneously.
+- No preservation of message boundaries.
+
+Example of message-boundary behavior:
+
+Sender performs:
+write("Hello")
+write("World")
+
+Receiver might observe:
+read() -> "HelloWorld"
+
+Or:
+read() -> "Hel"
+read() -> "loWo"
+read() -> "rld"
+
+The receiver must implement its own message-framing mechanism if it needs to distinguish individual messages.
+
+Possible framing methods:
+
+- Fixed-size messages.
+- Length-prefixed messages.
+- Delimiter-terminated messages.
+
+Stream server architecture
+
+The server performs the following operations:
+
+1. socket()
+   Creates a listening socket.
+
+2. bind()
+   Assigns a local address to the socket.
+
+3. listen()
+   Marks the socket as passive and allows incoming connection requests to be queued.
+
+4. accept()
+   Accepts a pending connection.
+   Returns a NEW socket descriptor representing the established connection.
+
+5. read() / recv()
+   Receives data from the connected client.
+
+6. write() / send()
+   Sends data to the connected client.
+
+7. close()
+   Closes the connected socket.
+
+Important distinction:
+
+The listening socket and the connected socket are different descriptors.
+
+- Listening socket (sfd): used to accept new connections.
+- Connected socket (cfd): used to communicate with one particular client.
+
+The listening socket remains open while the server accepts and serves other clients.
+
+Stream client architecture
+
+The client performs:
+
+1. socket()
+   Creates a socket.
+
+2. connect()
+   Requests a connection to the server's address.
+
+3. write() / send()
+   Sends data.
+
+4. read() / recv()
+   Receives data.
+
+5. close()
+   Closes the connection.
+
+Stream communication flow
+
+SERVER:
+
+socket()
+   |
+bind()
+   |
+listen()
+   |
+accept() <------------------- CLIENT
+   |                           |
+   |                         socket()
+   |                           |
+   |                         connect()
+   |                           |
+   +------ connection --------+
+   |
+read() / write()
+   |
+close()
+
+The server can call accept() again to accept another client.
+
+Handling multiple clients
+
+A sequential server:
+
+- Accepts a client.
+- Handles that client.
+- Waits until the client disconnects.
+- Accepts the next client.
+
+Problem:
+If the server blocks while reading from one client, it cannot accept or handle another client at that time.
+
+Common concurrency approaches:
+
+1. Processes (fork)
+   A separate process handles each client.
+
+2. Threads (pthread)
+   A separate thread handles each client.
+
+3. I/O multiplexing (select, poll, epoll)
+   One thread monitors multiple file descriptors and handles whichever are ready.
+
+With a threaded server:
+
+- Main thread creates the listening socket and accepts connections.
+- Each worker thread handles one connected client.
+- Each worker reads from and writes to its own connected socket.
+- The main thread continues accepting new clients.
+
+Shared data accessed by multiple threads may require synchronization, such as mutexes.
+
+---
+
+4. DATAGRAM SOCKETS
+
+General principle
+
+A datagram socket transfers independent messages called datagrams.
+
+Unlike a stream socket, it preserves message boundaries.
+
+If a sender transmits two datagrams:
+
+sendto("Hello")
+sendto("World")
+
+The receiver obtains two separate datagrams:
+
+recvfrom() -> "Hello"
+recvfrom() -> "World"
+
+A single receive operation receives one datagram. If the receiving buffer is too small, the excess data may be discarded.
+
+Important properties:
+
+- No connection establishment is required.
+- Each datagram is sent to a destination address.
+- Message boundaries are preserved.
+- Delivery is not guaranteed by the general datagram model.
+- Ordering is not guaranteed.
+- Datagrams may be lost or duplicated.
+
+UDP is a common network implementation of the datagram model.
+
+Datagram server architecture
+
+The server performs:
+
+1. socket()
+   Creates a datagram socket.
+
+2. bind()
+   Assigns a known local address.
+
+3. recvfrom()
+   Receives a datagram and obtains the sender's address.
+
+4. sendto()
+   Sends a datagram to a specified destination address.
+
+5. close()
+   Closes the socket.
+
+There is no listen() or accept().
+
+The server does not create a separate connected socket for every client.
+
+One datagram socket can receive messages from many clients.
+
+Datagram client architecture
+
+The client performs:
+
+1. socket()
+   Creates a datagram socket.
+
+2. bind() (optional in some cases)
+   Assigns a local address if the client needs a known address for receiving replies.
+
+3. sendto()
+   Sends a datagram to the server's address.
+
+4. recvfrom()
+   Receives a datagram, optionally obtaining the sender's address.
+
+5. close()
+   Closes the socket.
+
+Why does a datagram client sometimes need bind()?
+
+A server needs to know where to send a reply.
+
+When a client binds its socket to a unique local address, the server can obtain that address through recvfrom() and use it as the destination in sendto().
+
+For Unix domain datagram sockets, this is especially important when the client expects replies: it needs its own pathname socket address.
+
+For UDP clients, bind() is often unnecessary because the operating system can automatically assign an ephemeral local port when the socket first sends data.
+
+---
+
+5. STREAM VS DATAGRAM
+
+SOCK_STREAM:
+
+- Continuous byte stream.
+- No message boundaries.
+- Connection-oriented communication.
+- Reliable and ordered delivery when using TCP or Unix domain stream sockets.
+- Uses listen() and accept() on a passive server socket.
+
+SOCK_DGRAM:
+
+- Independent messages.
+- Message boundaries are preserved.
+- Connectionless communication model.
+- No general guarantee of delivery or ordering.
+- Uses sendto() and recvfrom().
+- No listen() or accept().
+
+Important:
+A datagram socket can also use connect(), but this does not establish a TCP-like connection. It associates a default peer address with the socket and can simplify sending and receiving.
+
+---
+
+6. IMPORTANT SOCKET FUNCTIONS
+
+socket()
+
+Creates a new socket.
+
+int socket(int domain, int type, int protocol);
+
+Parameters:
+
+- domain: address family (AF_UNIX, AF_INET, AF_INET6).
+- type: socket type (SOCK_STREAM, SOCK_DGRAM).
+- protocol: specific protocol; 0 usually selects the default for the chosen family and type.
+
+Returns:
+
+- File descriptor on success.
+- -1 on error.
+
+bind()
+
+Assigns a local address to a socket.
+
+int bind(int sockfd,
+         const struct sockaddr *addr,
+         socklen_t addrlen);
+
+Used primarily by servers to assign a known address.
+
+Also used by clients when they need a specific local address.
+
+Returns:
+
+- 0 on success.
+- -1 on error.
+
+listen()
+
+Marks a stream socket as passive, allowing it to accept incoming connection requests.
+
+int listen(int sockfd, int backlog);
+
+backlog:
+
+- Maximum length requested for the pending connection queue.
+- It is not the maximum number of clients the server can handle in total.
+
+Returns:
+
+- 0 on success.
+- -1 on error.
+
+accept()
+
+Accepts a pending connection on a listening stream socket.
+
+int accept(int sockfd,
+           struct sockaddr *addr,
+           socklen_t *addrlen);
+
+Returns:
+
+- New connected socket descriptor on success.
+- -1 on error.
+
+The original listening socket remains open.
+
+addr and addrlen can be NULL if the server does not need the client's address.
+
+connect()
+
+Requests a connection to a remote or local socket address.
+
+int connect(int sockfd,
+            const struct sockaddr *addr,
+            socklen_t addrlen);
+
+Commonly used by stream clients.
+
+Can also be used with datagram sockets to associate a default peer.
+
+Returns:
+
+- 0 on success.
+- -1 on error.
+
+send()
+
+Sends data through a connected socket.
+
+ssize_t send(int sockfd,
+             const void *buf,
+             size_t len,
+             int flags);
+
+recv()
+
+Receives data from a connected socket.
+
+ssize_t recv(int sockfd,
+             void *buf,
+             size_t len,
+             int flags);
+
+sendto()
+
+Sends data to a specified destination address.
+
+ssize_t sendto(int sockfd,
+               const void *buf,
+               size_t len,
+               int flags,
+               const struct sockaddr *dest_addr,
+               socklen_t addrlen);
+
+Commonly used with datagram sockets.
+
+recvfrom()
+
+Receives data and optionally obtains the sender's address.
+
+ssize_t recvfrom(int sockfd,
+                 void *buf,
+                 size_t len,
+                 int flags,
+                 struct sockaddr *src_addr,
+                 socklen_t *addrlen);
+
+Commonly used with datagram sockets.
+
+read() and write()
+
+Generic file-descriptor operations that also work with sockets.
+
+read(sockfd, buf, size);
+write(sockfd, buf, size);
+
+For stream sockets:
+
+- read() may return fewer bytes than requested.
+- write() may write fewer bytes than requested.
+- Applications should handle partial reads and writes.
+
+For datagram sockets:
+
+- Each send operation represents one datagram.
+- Each receive operation obtains one datagram.
+- Do not treat datagram I/O as an ordinary continuous byte stream.
+
+close()
+
+Closes a file descriptor.
+
+close(sockfd);
+
+For a connected stream socket, closing the descriptor releases that endpoint's reference to the connection.
+
+If multiple descriptors refer to the same socket, the underlying socket is not fully released until all references are closed.
+
+shutdown()
+
+Disables sending, receiving, or both directions of a socket.
+
+shutdown(sockfd, how);
+
+Possible values:
+
+- SHUT_RD: disable further reception.
+- SHUT_WR: disable further transmission.
+- SHUT_RDWR: disable both directions.
+
+Unlike close(), shutdown() does not release the file descriptor.
+
+---
+
+7. IMPORTANT RETURN VALUES
+
+read() / recv() / recvfrom():
+
+- Positive value: number of bytes received.
+- 0: orderly end-of-stream for a stream socket.
+- -1: error.
+
+Important:
+For a zero-length datagram, a datagram receive can return 0. Therefore, 0 does not universally mean disconnection for SOCK_DGRAM.
+
+write() / send() / sendto():
+
+- Non-negative value: number of bytes accepted/sent.
+- -1: error.
+
+Do not assume that one write() always sends the entire requested buffer.
+
+For stream sockets, use a loop when all bytes must be sent.
+
+For datagram sockets, each send represents a separate message; splitting one datagram into multiple sends creates multiple datagrams.
+
+accept():
+
+- Non-negative value: new connected socket descriptor.
+- -1: error.
+
+socket():
+
+- Non-negative value: socket descriptor.
+- -1: error.
+
+bind(), listen(), connect():
+
+- 0: success.
+- -1: error.
+
+perror() can be used to print an error description associated with errno.
+
+Important distinction:
+Most system calls return -1 and set errno on failure.
+POSIX pthread functions generally return an error number directly instead of using errno.
+
+---
+
+8. ADDRESS STRUCTURES
+
+All socket address structures can be passed to socket functions through the generic struct sockaddr pointer.
+
+Generic address structure
+
+struct sockaddr;
+
+It provides a common interface for different address families.
+
+The actual structure depends on the domain.
+
+Unix domain address
+
+struct sockaddr_un {
+    sa_family_t sun_family;
+    char sun_path[...];
+};
+
+Fields:
+
+- sun_family: AF_UNIX.
+- sun_path: filesystem pathname for a pathname socket.
+
+Example address:
+/tmp/my_socket
+
+IPv4 address
+
+struct sockaddr_in {
+    sa_family_t    sin_family;
+    in_port_t      sin_port;
+    struct in_addr sin_addr;
+};
+
+Fields:
+
+- sin_family: AF_INET.
+- sin_port: port number.
+- sin_addr: IPv4 address.
+
+IPv6 address
+
+struct sockaddr_in6 {
+    sa_family_t     sin6_family;
+    in_port_t       sin6_port;
+    uint32_t        sin6_flowinfo;
+    struct in6_addr sin6_addr;
+    uint32_t        sin6_scope_id;
+};
+
+Fields:
+
+- sin6_family: AF_INET6.
+- sin6_port: port number.
+- sin6_addr: IPv6 address.
+- sin6_flowinfo: flow information.
+- sin6_scope_id: interface/scope identifier, important for some scoped addresses such as link-local addresses.
+
+Address comparison
+
+AF_UNIX:
+struct sockaddr_un
+
+AF_INET:
+struct sockaddr_in
+
+AF_INET6:
+struct sockaddr_in6
+
+When calling bind(), connect(), sendto(), etc., the specific address structure is cast to const struct sockaddr *.
+
+---
+
+9. IP ADDRESSES AND PORTS
+
+Network sockets use IP addresses and port numbers.
+
+IP address:
+
+- Identifies a network interface/endpoint at the IP layer.
+- Used to route packets to the destination host.
+
+Port:
+
+- Identifies a transport-layer endpoint on the destination host.
+- Allows the operating system to deliver data to the appropriate socket.
+
+Example:
+192.168.1.20:8080
+
+- 192.168.1.20 = IPv4 address.
+- 8080 = port.
+
+A TCP connection is identified by a four-tuple:
+
+Source IP
+Source Port
+Destination IP
+Destination Port
+
+This allows many clients to connect to the same server IP and port simultaneously.
+
+The server listens on one port, while each client normally receives an automatically assigned ephemeral local port.
+
+Special addresses
+
+IPv4:
+
+- 127.0.0.1 = loopback (localhost).
+- 0.0.0.0 = unspecified address; used by servers to bind to all local IPv4 interfaces.
+- 192.168.x.x, 10.x.x.x, 172.16.x.x–172.31.x.x = private IPv4 ranges.
+
+IPv6:
+
+- ::1 = loopback (localhost).
+- :: = unspecified address; used to bind to all local IPv6 interfaces.
+- fe80::/10 = link-local unicast range.
+- 2000::/3 = global unicast range.
+
+IPv4 loopback is 127.0.0.1.
+IPv6 loopback is ::1.
+
+---
+
+10. BYTE ORDER: LITTLE ENDIAN AND BIG ENDIAN
+
+Computers store multi-byte values in memory using a particular byte order.
+
+Big Endian
+
+The most significant byte is stored first, at the lowest memory address.
+
+Example:
+Value: 0x12345678
+
+Memory:
+12 34 56 78
+
+Little Endian
+
+The least significant byte is stored first, at the lowest memory address.
+
+Value: 0x12345678
+
+Memory:
+78 56 34 12
+
+Host Byte Order
+
+The byte order used by the local machine.
+
+Most modern x86 and x86-64 systems use Little Endian.
+
+Network Byte Order
+
+The standard byte order used for multi-byte values in Internet protocols.
+
+Network Byte Order = Big Endian.
+
+Conversion functions
+
+htons():
+
+- Host TO Network Short.
+- Converts a 16-bit value.
+- Commonly used for port numbers.
+
+htonl():
+
+- Host TO Network Long.
+- Converts a 32-bit value.
+
+ntohs():
+
+- Network TO Host Short.
+
+ntohl():
+
+- Network TO Host Long.
+
+Example:
+
+addr.sin_port = htons(8080);
+
+The port is converted from host byte order to network byte order before being placed in the address structure.
+
+---
+
+11. IP ADDRESS CONVERSION FUNCTIONS
+
+inet_pton() — Presentation to Network.
+
+Converts a textual IP address into its binary representation.
+
+inet_pton(AF_INET, "192.168.1.20", &addr.sin_addr);
+
+inet_pton(AF_INET6, "::1", &addr6.sin6_addr);
+
+Returns:
+
+- 1: successful conversion.
+- 0: invalid address string.
+- -1: error (for example, unsupported address family).
+
+inet_ntop() — Network to Presentation.
+
+Converts a binary IP address into a human-readable string.
+
+Useful when displaying the address returned by accept() or recvfrom().
+
+---
+
+12. GENERAL SERVER AND CLIENT SKELETONS
+
+STREAM SERVER
+
+socket()
+    |
+  bind()
+    |
+  listen()
+    |
+  accept()
+    |
+read() / write()
+    |
+  close()
+
+The server repeats accept() to accept more clients.
+
+The accepted socket is used for communication with one client.
+
+STREAM CLIENT
+
+socket()
+    |
+  connect()
+    |
+read() / write()
+    |
+  close()
+
+DATAGRAM SERVER
+
+socket()
+    |
+  bind()
+    |
+recvfrom()
+    |
+ sendto()
+    |
+repeat
+    |
+  close()
+
+DATAGRAM CLIENT
+
+socket()
+    |
+sendto()
+    |
+recvfrom()
+    |
+  close()
+
+A client-side bind() may be used when a known local address is required.
+
+---
+
+13. UNIX DOMAIN VS INTERNET DOMAIN
+
+UNIX DOMAIN (AF_UNIX):
+
+- Local inter-process communication.
+- Processes must be on the same machine.
+- Uses local socket addresses, commonly filesystem paths.
+- No IP address or network port.
+- Can use SOCK_STREAM or SOCK_DGRAM.
+- Does not communicate through the IP network layer.
+
+INTERNET DOMAIN (AF_INET / AF_INET6):
+
+- Network communication.
+- Can connect processes on different machines.
+- Uses IP addresses and port numbers.
+- AF_INET uses IPv4.
+- AF_INET6 uses IPv6.
+- Can use SOCK_STREAM or SOCK_DGRAM.
+
+Comparison table
+
+Property              AF_UNIX              AF_INET / AF_INET6
+
+Communication         Local IPC             Network communication
+Address               Filesystem path       IP address + port
+Address structure     sockaddr_un           sockaddr_in / sockaddr_in6
+Stream type           SOCK_STREAM           SOCK_STREAM
+Datagram type         SOCK_DGRAM            SOCK_DGRAM
+listen()/accept()     Stream only           Stream only
+IP routing            No                    Yes
+
+---
+
+14. IMPORTANT CONCEPTS TO REMEMBER
+
+1. A socket is an endpoint for communication and is represented by a file descriptor.
+
+2. AF_UNIX, AF_INET, and AF_INET6 define address families, not communication types.
+
+3. SOCK_STREAM represents a byte stream; SOCK_DGRAM represents independent messages.
+
+4. TCP is connection-oriented and provides reliable, ordered byte-stream delivery.
+
+5. UDP is connectionless and provides datagram delivery without general guarantees of reliability or ordering.
+
+6. listen() and accept() are used by stream servers, not datagram servers.
+
+7. accept() returns a new connected socket descriptor. The original listening socket remains open.
+
+8. A server can use one listening port for many simultaneous TCP clients. Each connection has its own client-side source port.
+
+9. recvfrom() obtains both a datagram and, optionally, the sender's address.
+
+10. A UNIX datagram client may need bind() to have a known local address for replies.
+
+11. read() and write() may transfer fewer bytes than requested when using stream sockets.
+
+12. Stream sockets do not preserve message boundaries. Datagram sockets do.
+
+13. Network Byte Order is Big Endian. Use htons(), htonl(), ntohs(), and ntohl() when handling multi-byte protocol values.
+
+14. IPv4 localhost = 127.0.0.1.
+    IPv6 localhost = ::1.
+
+15. close() releases a file descriptor; shutdown() disables communication directions without itself closing the descriptor.
