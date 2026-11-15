@@ -1,0 +1,59 @@
+1) touch info.sh
+
+touch /etc/systemd/system/info-once.service
+[Unit]
+Description=Write info to info.log
+
+[Service]
+Type=oneshot
+ExecStart=/home/ufull/uni/os_sec/lab8/info.sh
+
+
+sudo systemctl daemon-reload
+sudo systemctl start info-once.service
+
+cat ~/info.log
+RUNNING. PID=5454. TIME=Sun Nov 15 02:31:42 PM EST 2026
+
+sudo journalctl -u info-one.service
+Nov 15 14:47:59 debianGramps systemd[1]: Starting info-once.service - Write info to info.log...
+Nov 15 14:47:59 debianGramps info.sh[6019]: RUNNING. PID=6019. TIME=Sun Nov 15 02:47:59 PM EST 2026
+Nov 15 14:47:59 debianGramps systemd[1]: info-once.service: Deactivated successfully.
+Nov 15 14:47:59 debianGramps systemd[1]: Finished info-once.service - Write info to info.log.
+
+2) sudo systemctl set-default multi-user.target
+sudo systemctl reboot
+
+3) touch info-5sec.sh
+
+crontab -e
+* * * * * /home/ufull/uni/os_sec/lab6/info-5sec.sh
+
+cat ~/info.log
+RUNNING. PID=6496. TIME=Sun Nov 15 03:23:01 PM EST 2026
+RUNNING. PID=6496. TIME=Sun Nov 15 03:23:06 PM EST 2026
+RUNNING. PID=6496. TIME=Sun Nov 15 03:23:11 PM EST 2026
+RUNNING. PID=6496. TIME=Sun Nov 15 03:23:16 PM EST 2026
+RUNNING. PID=6496. TIME=Sun Nov 15 03:23:21 PM EST 2026
+
+4) touch insfo-loop.sh
+
+touch/etc/systemd/system/info-loop.service
+[Unit]
+Description=Write info every 5 sec
+
+[Service]
+Tpe=simple
+ExecStart=/home/ufull/uni/os_sec/lab8/info-loop.sh
+Restart=always
+
+sudo systemctl daemon-reload
+sudo systemctl start info-loop.service
+
+cat ~/info.log 
+RUNNING. PID=7027. TIME=Sun Nov 15 03:46:27 PM EST 2026
+RUNNING. PID=7027. TIME=Sun Nov 15 03:46:32 PM EST 2026
+RUNNING. PID=7027. TIME=Sun Nov 15 03:46:37 PM EST 2026
+RUNNING. PID=7027. TIME=Sun Nov 15 03:46:42 PM EST 2026
+
+5)

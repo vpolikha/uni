@@ -1,0 +1,11 @@
+[Unit]
+Description=Write info every 5 sec
+
+[Service]
+Tpe=simple
+ExecStart=/home/ufull/uni/os_sec/lab8/info-loop.sh
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
