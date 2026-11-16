@@ -1,13 +1,5 @@
 1) touch info.sh
-
 touch /etc/systemd/system/info-once.service
-[Unit]
-Description=Write info to info.log
-
-[Service]
-Type=oneshot
-ExecStart=/home/ufull/uni/os_sec/lab8/info.sh
-
 
 sudo systemctl daemon-reload
 sudo systemctl start info-once.service
@@ -36,19 +28,11 @@ RUNNING. PID=6496. TIME=Sun Nov 15 03:23:11 PM EST 2026
 RUNNING. PID=6496. TIME=Sun Nov 15 03:23:16 PM EST 2026
 RUNNING. PID=6496. TIME=Sun Nov 15 03:23:21 PM EST 2026
 
-4) touch insfo-loop.sh
-
-touch/etc/systemd/system/info-loop.service
-[Unit]
-Description=Write info every 5 sec
-
-[Service]
-Tpe=simple
-ExecStart=/home/ufull/uni/os_sec/lab8/info-loop.sh
-Restart=always
+4) touch info-loop.sh
+touch info.timer
 
 sudo systemctl daemon-reload
-sudo systemctl start info-loop.service
+sudo systemctl start info.timer
 
 cat ~/info.log 
 RUNNING. PID=7027. TIME=Sun Nov 15 03:46:27 PM EST 2026

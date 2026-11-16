@@ -1,0 +1,11 @@
+[Unit]
+Description=Run info script every 5 sec
+
+[Timer]
+OnBootSec=5sec
+OnUnitActiveSec=5sec
+Accuracy=1us
+Unit=info-once.service
+
+[Install]
+WantedBy=timers.target

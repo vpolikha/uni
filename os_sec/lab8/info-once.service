@@ -1,0 +1,6 @@
+[Unit]
+Description=Write info to info.log
+
+[Service]
+Type=oneshot
+ExecStart=/home/ufull/uni/os_sec/lab8/info.sh
