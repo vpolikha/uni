@@ -40,4 +40,25 @@ RUNNING. PID=7027. TIME=Sun Nov 15 03:46:32 PM EST 2026
 RUNNING. PID=7027. TIME=Sun Nov 15 03:46:37 PM EST 2026
 RUNNING. PID=7027. TIME=Sun Nov 15 03:46:42 PM EST 2026
 
-5)
+5) (PC A)
+systemctl enable ssh
+systemctl start ssh
+
+hostaname -I
+192.168.101.18
+
+sudo ufw enable
+sudo fuw allow 22
+
+(PC B)
+ssh ufull@192.168.101.18
+...
+exit
+
+(PC A)
+systemctl stop ssh
+systemctl disable ssh
+
+(PC B)
+ssh ufull@192.168.101.18
+ssh: connect to host 192.168.101.18 port 22: Connection refused
